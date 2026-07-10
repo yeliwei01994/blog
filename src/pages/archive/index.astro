@@ -1,0 +1,19 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getPublishedPosts } from '../../lib/content';
+import { groupPostsByYear } from '../../lib/posts';
+const groups = groupPostsByYear(await getPublishedPosts());
+const formatDate = (date: Date) => new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit' }).format(date);
+---
+
+<BaseLayout title="归档" description="按年份浏览 FORM / FUTURE 的文章归档。">
+  <header class="page-hero shell"><h1>Archive</h1><p>写作不是一次性发布，而是一条逐渐显现的时间线。</p></header>
+  <section class="shell content-section">
+    {[...groups].map(([year, posts]) => (
+      <section class="archive-year" aria-labelledby={`year-${year}`}>
+        <h2 id={`year-${year}`}>{year}</h2>
+        <ol class="archive-list">{posts.map((post) => <li class="archive-item"><time>{formatDate(post.data.publishedAt)}</time><a href={`/posts/${post.id}/`}>{post.data.title}</a><span>{post.data.tags.join(' / ')}</span></li>)}</ol>
+      </section>
+    ))}
+  </section>
+</BaseLayout>

@@ -1,0 +1,24 @@
+---
+import type { ContentPost } from '../lib/content';
+import ArticleMeta from './ArticleMeta.astro';
+
+interface Props {
+  post: ContentPost;
+  index: number;
+  size?: 'feature' | 'standard' | 'compact';
+}
+const { post, index, size = 'standard' } = Astro.props;
+const href = `/posts/${post.id}/`;
+---
+
+<article class:list={['post-card', size]}>
+  <div class="post-card__image">
+    <span class="post-card__number">{String(index + 1).padStart(2, '0')}</span>
+    {post.data.cover
+      ? <img src={post.data.cover} alt="" width="1600" height="900" loading={index > 1 ? 'lazy' : 'eager'} />
+      : <div class="cover-fallback" aria-hidden="true"></div>}
+  </div>
+  <ArticleMeta publishedAt={post.data.publishedAt} tags={post.data.tags} />
+  <h3><a href={href}>{post.data.title}</a></h3>
+  <p>{post.data.description}</p>
+</article>
