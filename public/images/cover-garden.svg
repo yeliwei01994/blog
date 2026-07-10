@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">数字花园抽象封面</title>
+  <desc id="desc">橙色圆形、黑色网格和米白背景组成的编辑部风格图形</desc>
+  <rect width="1600" height="900" fill="#f3f0e8"/>
+  <path d="M0 180h1600M0 360h1600M0 540h1600M0 720h1600M320 0v900M640 0v900M960 0v900M1280 0v900" stroke="#171717" stroke-width="2" opacity=".28"/>
+  <circle cx="1150" cy="360" r="280" fill="#ff4d00"/>
+  <path d="M110 720 650 180h250L360 720Z" fill="#171717"/>
+  <text x="96" y="120" fill="#171717" font-family="Arial, sans-serif" font-size="54" font-weight="700">FIELD NOTE 001</text>
+</svg>

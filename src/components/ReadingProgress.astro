@@ -1,0 +1,15 @@
+<div class="reading-progress" data-reading-progress aria-hidden="true"></div>
+<script>
+  const progress = document.querySelector<HTMLElement>('[data-reading-progress]');
+  let ticking = false;
+  const update = () => {
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    const ratio = max > 0 ? Math.min(1, window.scrollY / max) : 0;
+    if (progress) progress.style.transform = `scaleX(${ratio})`;
+    ticking = false;
+  };
+  addEventListener('scroll', () => {
+    if (!ticking) { requestAnimationFrame(update); ticking = true; }
+  }, { passive: true });
+  update();
+</script>

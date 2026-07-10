@@ -1,0 +1,29 @@
+---
+title: "Astro：把内容当作数据"
+description: "用 Content Collections 管理 Markdown 元数据，在构建阶段发现错误并生成稳定的静态页面。"
+publishedAt: 2026-07-03
+tags: ["Astro", "TypeScript", "工程"]
+cover: "/images/cover-astro.svg"
+featured: true
+---
+
+静态博客最容易被忽略的工程问题不是页面渲染，而是内容字段逐渐失控：日期格式不一致、标签大小写混乱、封面路径失效。
+
+## Schema 是编辑规则
+
+```ts
+const blog = defineCollection({
+  schema: z.object({
+    title: z.string().min(1),
+    publishedAt: z.coerce.date(),
+    tags: z.array(z.string()).default([]),
+    draft: z.boolean().default(false),
+  }),
+});
+```
+
+构建阶段的校验让错误尽早出现。模板只消费已经被验证的数据，因此文章列表、归档和搜索可以共享同一套可靠来源。
+
+## 保持静态优先
+
+交互不等于必须引入完整的客户端框架。主题切换、搜索和阅读进度都可以渐进增强：HTML 先可读，JavaScript 只负责改善体验。

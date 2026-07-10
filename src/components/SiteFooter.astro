@@ -1,0 +1,23 @@
+---
+import { SITE } from '../config/site';
+import { withBase } from '../lib/urls';
+const year = new Date().getFullYear();
+---
+
+<footer class="site-footer">
+  <div class="shell footer-grid">
+    <p class="footer-title">Keep<br />making<br />notes.</p>
+    <div>
+      <p class="eyebrow">Navigate</p>
+      <ul class="footer-list">{SITE.nav.map((item) => <li><a href={withBase(item.href)}>{item.label}</a></li>)}</ul>
+    </div>
+    <div>
+      <p class="eyebrow">Elsewhere</p>
+      <ul class="footer-list">{SITE.social.map((item) => <li><a href={item.href} target="_blank" rel="noreferrer">{item.label}</a></li>)}</ul>
+    </div>
+  </div>
+  <div class="shell footer-meta">
+    <span>© {year} {SITE.author}</span>
+    <span>Built with Astro / Published as static HTML</span>
+  </div>
+</footer>

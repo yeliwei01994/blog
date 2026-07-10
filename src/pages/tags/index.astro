@@ -1,0 +1,12 @@
+---
+import TagChip from '../../components/TagChip.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getPublishedPosts } from '../../lib/content';
+import { getAllTags } from '../../lib/posts';
+const tags = getAllTags(await getPublishedPosts());
+---
+
+<BaseLayout title="标签" description="按照主题浏览 FORM / FUTURE 的公开笔记。">
+  <header class="page-hero shell"><h1>Index</h1><p>{tags.length} 个主题，把零散文章重新连接成一张知识网络。</p></header>
+  <section class="shell content-section"><ul class="tag-list">{tags.map((tag) => <li><TagChip {...tag} /></li>)}</ul></section>
+</BaseLayout>
