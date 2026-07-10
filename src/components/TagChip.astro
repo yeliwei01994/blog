@@ -1,8 +1,9 @@
 ---
+import { withBase } from '../lib/urls';
 interface Props { label: string; slug: string; count?: number; }
 const { label, slug, count } = Astro.props;
 ---
 
-<a class="tag-chip" href={`/tags/${encodeURIComponent(slug)}/`}>
+<a class="tag-chip" href={withBase(`/tags/${encodeURIComponent(slug)}/`)}>
   <span>{label}</span>{typeof count === 'number' && <sup>{String(count).padStart(2, '0')}</sup>}
 </a>

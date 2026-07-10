@@ -1,5 +1,6 @@
 ---
 import { SITE } from '../config/site';
+import { withBase } from '../lib/urls';
 const year = new Date().getFullYear();
 ---
 
@@ -8,7 +9,7 @@ const year = new Date().getFullYear();
     <p class="footer-title">Keep<br />making<br />notes.</p>
     <div>
       <p class="eyebrow">Navigate</p>
-      <ul class="footer-list">{SITE.nav.map((item) => <li><a href={item.href}>{item.label}</a></li>)}</ul>
+      <ul class="footer-list">{SITE.nav.map((item) => <li><a href={withBase(item.href)}>{item.label}</a></li>)}</ul>
     </div>
     <div>
       <p class="eyebrow">Elsewhere</p>

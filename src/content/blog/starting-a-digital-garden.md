@@ -21,7 +21,7 @@ featured: true
 
 每篇文章都应该留下继续探索的入口。比如这份博客会把相关主题放进标签页，而不是让文章在发布日期之后彻底沉底。
 
-![数字花园的编辑部式视觉草图](/images/cover-garden.svg)
+![数字花园的编辑部式视觉草图](../../../public/images/cover-garden.svg)
 
 ## 从一个问题开始
 

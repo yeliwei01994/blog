@@ -43,7 +43,20 @@ if (typeof document !== 'undefined') {
   trigger?.addEventListener('click', async () => {
     dialog?.showModal();
     input?.focus();
-    if (!entries) entries = await fetch('/search-index.json').then((response) => response.json());
+    if (!entries && dialog && results) {
+      results.setAttribute('aria-busy', 'true');
+      results.innerHTML = '<p class="search-empty">正在加载搜索索引…</p>';
+      try {
+        const response = await fetch(dialog.dataset.searchUrl ?? 'search-index.json');
+        if (!response.ok) throw new Error(`Search index request failed: ${response.status}`);
+        entries = await response.json();
+        render([], false);
+      } catch {
+        results.innerHTML = '<p class="search-empty">搜索索引加载失败，请稍后重试。</p>';
+      } finally {
+        results.removeAttribute('aria-busy');
+      }
+    }
   });
 
   dialog?.addEventListener('close', () => trigger?.focus());

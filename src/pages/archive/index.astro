@@ -2,6 +2,7 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getPublishedPosts } from '../../lib/content';
 import { groupPostsByYear } from '../../lib/posts';
+import { withBase } from '../../lib/urls';
 const groups = groupPostsByYear(await getPublishedPosts());
 const formatDate = (date: Date) => new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit' }).format(date);
 ---
@@ -12,7 +13,7 @@ const formatDate = (date: Date) => new Intl.DateTimeFormat('zh-CN', { month: '2-
     {[...groups].map(([year, posts]) => (
       <section class="archive-year" aria-labelledby={`year-${year}`}>
         <h2 id={`year-${year}`}>{year}</h2>
-        <ol class="archive-list">{posts.map((post) => <li class="archive-item"><time>{formatDate(post.data.publishedAt)}</time><a href={`/posts/${post.id}/`}>{post.data.title}</a><span>{post.data.tags.join(' / ')}</span></li>)}</ol>
+        <ol class="archive-list">{posts.map((post) => <li class="archive-item"><time>{formatDate(post.data.publishedAt)}</time><a href={withBase(`/posts/${post.id}/`)}>{post.data.title}</a><span>{post.data.tags.join(' / ')}</span></li>)}</ol>
       </section>
     ))}
   </section>

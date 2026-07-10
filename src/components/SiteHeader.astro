@@ -1,5 +1,6 @@
 ---
 import { SITE } from '../config/site';
+import { withBase } from '../lib/urls';
 import SearchDialog from './SearchDialog.astro';
 import ThemeToggle from './ThemeToggle.astro';
 
@@ -7,10 +8,10 @@ const currentPath = Astro.url.pathname;
 ---
 
 <header class="site-header shell">
-  <a class="brand" href="/" aria-label={`${SITE.title} 首页`}>FORM<span>/</span>FUTURE</a>
+  <a class="brand" href={withBase('/')} aria-label={`${SITE.title} 首页`}>FORM<span>/</span>FUTURE</a>
   <nav class="site-nav" aria-label="主导航">
     {SITE.nav.map((item) => (
-      <a href={item.href} aria-current={currentPath === item.href ? 'page' : undefined}>{item.label}</a>
+      <a href={withBase(item.href)} aria-current={currentPath === withBase(item.href) ? 'page' : undefined}>{item.label}</a>
     ))}
   </nav>
   <div class="header-actions"><SearchDialog /><ThemeToggle /></div>
