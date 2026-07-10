@@ -1,14 +1,11 @@
 ---
 import HeroFeature from '../components/HeroFeature.astro';
-import PostCard from '../components/PostCard.astro';
-import TagChip from '../components/TagChip.astro';
+import DiaryCard from '../components/DiaryCard.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { getPublishedPosts } from '../lib/content';
-import { getAllTags } from '../lib/posts';
+import { getPublishedDiaryEntries } from '../lib/content';
 import { withBase } from '../lib/urls';
 
-const posts = await getPublishedPosts();
-const tags = getAllTags(posts);
+const entries = await getPublishedDiaryEntries();
 ---
 
 <BaseLayout>
@@ -17,27 +14,18 @@ const tags = getAllTags(posts);
   <section class="shell content-section section-rule" aria-labelledby="latest-title">
     <header class="section-head">
       <div>
-        <p class="eyebrow">Latest dispatches</p>
-        <h2 id="latest-title">最新文章</h2>
+        <p class="eyebrow">Personal journal</p>
+        <h2 id="latest-title">最近日记</h2>
       </div>
-      <a href={withBase('/posts/')}>浏览全部 →</a>
+      <a href={withBase('/diary/')}>查看日记 →</a>
     </header>
-    <div class="post-grid">
-      {posts.map((post, index) => <PostCard post={post} index={index} size={index === 0 ? 'feature' : 'standard'} />)}
-    </div>
-  </section>
-
-  <section class="shell content-section section-rule" aria-labelledby="topics-title">
-    <header class="section-head">
-      <div><p class="eyebrow">Index by subject</p><h2 id="topics-title">主题索引</h2></div>
-    </header>
-    <ul class="tag-list">{tags.map((tag) => <li><TagChip {...tag} /></li>)}</ul>
+    {entries.length > 0 ? <div class="post-grid">{entries.map((entry, index) => <DiaryCard entry={entry} index={index} />)}</div> : <div class="empty-state"><span>00</span><p>还没有日记。这里会慢慢记录新的学习与思考。</p></div>}
   </section>
 
   <section class="shell content-section section-rule about-grid">
     <p class="eyebrow">About this publication / No. 001</p>
     <div>
-      <p class="about-lead">一个持续更新的个人编辑部：把工程实践、视觉判断和生活中的微小发现整理成可检索的公开笔记。</p>
+      <p class="about-lead">学习并成为一名全职开发者</p>
       <a href={withBase('/about/')}>认识作者与这份博客 →</a>
     </div>
   </section>

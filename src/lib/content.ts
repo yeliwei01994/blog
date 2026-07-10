@@ -1,8 +1,8 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
-import { sortAndFilterPosts } from './posts';
+import { sortAndFilterEntries } from './diary';
 
-export type ContentPost = CollectionEntry<'blog'>;
+export type ContentDiaryEntry = CollectionEntry<'diary'>;
 
-export async function getPublishedPosts(): Promise<ContentPost[]> {
-  return sortAndFilterPosts(await getCollection('blog'));
+export async function getPublishedDiaryEntries(): Promise<ContentDiaryEntry[]> {
+  return sortAndFilterEntries(await getCollection('diary'));
 }
