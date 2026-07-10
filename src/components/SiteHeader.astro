@@ -1,7 +1,6 @@
 ---
 import { SITE } from '../config/site';
 import { withBase } from '../lib/urls';
-import SearchDialog from './SearchDialog.astro';
 import ThemeToggle from './ThemeToggle.astro';
 
 const currentPath = Astro.url.pathname;
@@ -14,5 +13,5 @@ const currentPath = Astro.url.pathname;
       <a href={withBase(item.href)} aria-current={currentPath === withBase(item.href) ? 'page' : undefined}>{item.label}</a>
     ))}
   </nav>
-  <div class="header-actions"><SearchDialog /><ThemeToggle /></div>
+  <div class="header-actions"><ThemeToggle /></div>
 </header>

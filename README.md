@@ -1,6 +1,6 @@
 # FORM / FUTURE
 
-一套使用 Astro 7、TypeScript 和 Markdown/MDX 构建的未来编辑部风个人博客。默认部署地址为：
+叶厉为的个人日记。默认部署地址为：
 
 `https://yeliwei01994.github.io/blog/`
 
@@ -26,9 +26,9 @@ npm run preview
 
 构建结果位于 `dist/`。
 
-## 发布新文章
+## 写一篇日记
 
-在 `src/content/blog/` 新建 `.md` 或 `.mdx` 文件：
+复制 `src/content/diary/_template.md`，重命名后开始写作：
 
 ```yaml
 ---
@@ -36,14 +36,11 @@ title: "文章标题"
 description: "至少二十个字符的文章摘要，用于列表、搜索和 SEO。"
 publishedAt: 2026-07-10
 updatedAt: 2026-07-10
-tags: ["Astro", "写作"]
-cover: "/images/cover-name.svg"
-featured: false
 draft: false
 ---
 ```
 
-- `draft: true` 的文章不会进入生产列表、归档、标签和搜索。
+- `draft: true` 的日记不会出现在网站中。
 - 封面文件建议放在 `public/images/`，并填写从站点根开始的路径。
 - 内容字段由 `src/content.config.ts` 校验，错误会在检查或构建阶段报告。
 
@@ -76,7 +73,7 @@ draft: false
 src/
 ├─ components/       可复用界面组件
 ├─ config/site.ts    站点身份与导航
-├─ content/blog/     Markdown/MDX 文章
+├─ content/diary/    Markdown/MDX 日记
 ├─ layouts/          基础页面与文章布局
 ├─ lib/              内容查询与 URL 工具
 ├─ pages/            Astro 路由
