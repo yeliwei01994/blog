@@ -1,0 +1,18 @@
+<span class="visually-hidden" data-copy-status aria-live="polite"></span>
+<script>
+  const status = document.querySelector<HTMLElement>('[data-copy-status]');
+  document.querySelectorAll('pre').forEach((pre) => {
+    const button = document.createElement('button');
+    button.className = 'code-copy';
+    button.type = 'button';
+    button.textContent = 'COPY';
+    button.setAttribute('aria-label', '复制代码');
+    button.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(pre.querySelector('code')?.textContent ?? '');
+      button.textContent = 'COPIED';
+      if (status) status.textContent = '代码已复制';
+      setTimeout(() => { button.textContent = 'COPY'; }, 1600);
+    });
+    pre.append(button);
+  });
+</script>
