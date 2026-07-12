@@ -6,7 +6,7 @@ const diary = defineCollection({
   loader: glob({ pattern: '**/*.{md,mdx}', base: './src/content/diary' }),
   schema: z.object({
     title: z.string().min(1),
-    description: z.string().min(20),
+    description: z.string().min(1),
     publishedAt: z.coerce.date(),
     updatedAt: z.coerce.date().optional(),
     cover: z.string().optional(),
