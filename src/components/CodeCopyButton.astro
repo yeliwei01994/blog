@@ -4,7 +4,8 @@
   document.querySelectorAll('pre').forEach((pre) => {
     const code = pre.querySelector('code');
     const languageClass = Array.from(code?.classList ?? []).find((name) => name.startsWith('language-'));
-    const language = languageClass ? languageClass.replace('language-', '').toUpperCase() : 'PLAINTEXT';
+    const language = pre.dataset.language?.toUpperCase()
+      ?? (languageClass ? languageClass.replace('language-', '').toUpperCase() : 'PLAINTEXT');
     const rawCode = code?.textContent ?? pre.textContent ?? '';
     const window = document.createElement('div');
     window.className = 'code-window';

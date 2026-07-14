@@ -20,6 +20,7 @@ describe('diary code windows', () => {
 
     expect(layout).toContain('code-window');
     expect(layout).toContain('PLAINTEXT');
+    expect(layout).toContain('dataset.language');
     expect(styles).toContain('.code-window__title');
     expect(styles).toContain('counter-reset: code-line');
   });
