@@ -74,11 +74,64 @@ Write-Host "门户网站部署完成"
 
 上周开始学习 Rust，目前已经阅读《The Rust Programming Language》至第十章。
 
-目前主要学习了变量和可变性、函数、控制流、所有权、引用与借用、结构体、枚举、集合类型、错误处理、泛型和 Trait 等内容。
+前十章的内容覆盖得比较完整，从最基础的变量、函数和控制流开始，逐步学习了所有权、结构体、枚举、模块、集合、错误处理，以及第十章的泛型、Trait 和生命周期。
 
 Rust 和之前接触过的一些语言有比较明显的区别，尤其是所有权、借用和生命周期这些概念，需要花时间去理解。不过写了一些小例子之后，能够感受到 Rust 的编译器确实是在帮助开发者提前发现问题。
 
-### 2. 所有权实践
+### 2. 基础语法和猜数字练习
+
+前几章主要学习了 Rust 的基本语法，包括变量声明、可变性、数据类型、函数、条件判断和循环。Rust 默认变量是不可变的，如果需要修改变量，需要显式加上 `mut`：
+
+```rust
+fn main() {
+    let number = 10;
+    let mut count = 0;
+
+    while count < number {
+        println!("count = {}", count);
+        count += 1;
+    }
+}
+```
+
+另外还按照书中的例子了解了猜数字游戏的基本实现。这个练习把输入、随机数生成、字符串解析、循环和 `match` 判断结合到了一起：
+
+```rust
+use std::cmp::Ordering;
+use std::io;
+
+fn main() {
+    let secret_number = 7;
+
+    loop {
+        println!("请输入一个数字：");
+
+        let mut guess = String::new();
+        io::stdin().read_line(&mut guess).unwrap();
+
+        let guess: u32 = match guess.trim().parse() {
+            Ok(num) => num,
+            Err(_) => {
+                println!("请输入有效数字");
+                continue;
+            }
+        };
+
+        match guess.cmp(&secret_number) {
+            Ordering::Less => println!("小了"),
+            Ordering::Greater => println!("大了"),
+            Ordering::Equal => {
+                println!("猜对了");
+                break;
+            }
+        }
+    }
+}
+```
+
+这个例子虽然简单，但把 Rust 的基础内容串了起来，也让我对 Rust 的输入处理和错误分支有了初步认识。
+
+### 3. 所有权实践
 
 ```rust
 fn main() {
@@ -104,7 +157,7 @@ fn main() {
 
 通过这个练习，理解了 Rust 中“移动”和“复制”的区别。
 
-### 3. 引用和借用实践
+### 4. 引用和借用实践
 
 ```rust
 fn calculate_length(text: &String) -> usize {
@@ -134,7 +187,101 @@ fn main() {
 }
 ```
 
-### 4. 结构体、泛型和 Trait 实践
+### 5. 结构体、枚举和模式匹配
+
+在结构体之外，还学习了使用枚举表示一个值可能存在的多种状态。Rust 中的 `Option` 也是基于枚举实现的，可以用来表示“有值”或“没有值”：
+
+```rust
+enum Message {
+    Text(String),
+    Number(i32),
+    Quit,
+}
+
+fn print_message(message: Message) {
+    match message {
+        Message::Text(text) => println!("文本：{}", text),
+        Message::Number(number) => println!("数字：{}", number),
+        Message::Quit => println!("退出"),
+    }
+}
+```
+
+通过 `match` 可以对不同情况分别处理。相比使用很多空值判断，枚举能够让状态表达得更明确，编译器也会提醒是否遗漏了某种情况。
+
+### 6. 模块、包和项目组织
+
+第七章主要学习了 Rust 的包、crate、模块以及 `use` 和 `pub`。模块可以把相关功能组织在一起，`pub` 用来控制哪些内容可以被外部访问。
+
+```rust
+mod hosting {
+    pub fn add_to_waitlist() {
+        println!("加入等待列表");
+    }
+}
+
+fn main() {
+    hosting::add_to_waitlist();
+}
+```
+
+这部分内容和实际项目开发联系比较紧密。随着代码量增加，如果所有代码都放在同一个文件中，会越来越难维护，因此需要通过模块划分职责。
+
+### 7. 集合类型实践
+
+第八章学习了 `Vec<T>`、字符串和哈希映射。`Vec` 可以保存一组相同类型的数据：
+
+```rust
+fn main() {
+    let numbers = vec![1, 2, 3, 4, 5];
+
+    for number in &numbers {
+        println!("{}", number);
+    }
+}
+```
+
+哈希映射则适合保存键值对，例如统计单词出现次数：
+
+```rust
+use std::collections::HashMap;
+
+fn main() {
+    let words = vec!["rust", "web", "rust"];
+    let mut counts = HashMap::new();
+
+    for word in words {
+        let count = counts.entry(word).or_insert(0);
+        *count += 1;
+    }
+
+    println!("{:?}", counts);
+}
+```
+
+### 8. 错误处理
+
+第九章主要学习了 Rust 的错误处理方式。Rust 通常使用 `Result<T, E>` 表示可能成功也可能失败的操作，而不是直接忽略错误：
+
+```rust
+use std::fs;
+
+fn read_config() -> Result<String, std::io::Error> {
+    let content = fs::read_to_string("config.toml")?;
+    Ok(content)
+}
+
+fn main() {
+    match read_config() {
+        Ok(content) => println!("配置内容：{}", content),
+        Err(error) => println!("读取配置失败：{}", error),
+    }
+}
+```
+
+其中 `?` 可以在当前函数中快速传递错误，让代码比层层嵌套判断更加简洁。结合之前门户网站部署脚本的工作来看，部署过程中的目录不存在、文件复制失败等问题，也都适合加入明确的错误提示和处理逻辑。
+
+### 9. 泛型和 Trait 实践
 
 ```rust
 struct Counter {
@@ -179,4 +326,3 @@ impl Summary for News {
 ```
 
 这一周主要还是以阅读和小例子练习为主。Rust 目前还处于入门阶段，生命周期等内容还需要继续结合具体代码理解。
-
