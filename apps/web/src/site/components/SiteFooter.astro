@@ -6,13 +6,16 @@ const year = new Date().getFullYear();
 
 <footer class="site-footer">
   <div class="shell footer-grid">
-    <p class="footer-title">Keep<br />making<br />notes.</p>
     <div>
-      <p class="eyebrow">Navigate</p>
+      <p class="footer-title">YE / blog</p>
+      <p class="footer-description">记录学习、工作与项目实践。</p>
+    </div>
+    <div>
+      <p class="eyebrow">导航</p>
       <ul class="footer-list">{SITE.nav.map((item) => <li><a href={withBase(item.href)}>{item.label}</a></li>)}</ul>
     </div>
     <div>
-      <p class="eyebrow">Elsewhere</p>
+      <p class="eyebrow">链接</p>
       <ul class="footer-list">{SITE.social.map((item) => <li><a href={item.href} target="_blank" rel="noreferrer">{item.label}</a></li>)}</ul>
     </div>
   </div>

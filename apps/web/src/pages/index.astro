@@ -22,11 +22,11 @@ const entries = await getPublishedDiaryEntries();
     {entries.length > 0 ? <div class="post-grid">{entries.map((entry, index) => <DiaryCard entry={entry} index={index} />)}</div> : <div class="empty-state"><span>00</span><p>还没有日记。这里会慢慢记录新的学习与思考。</p></div>}
   </section>
 
-  <section class="shell content-section section-rule about-grid">
-    <p class="eyebrow">About this publication / No. 001</p>
-    <div>
-      <p class="about-lead">学习并成为一名全栈开发者</p>
-      <a href={withBase('/about/')}>认识作者与这份博客 →</a>
+  <section class="shell content-section section-rule about-grid home-introduction" aria-labelledby="home-about-title">
+    <p class="eyebrow" id="home-about-title">写在这里</p>
+    <div class="home-introduction__content">
+      <p>把工作中的思考、学习中的收获和项目里的经验，整理成可以回看的记录。</p>
+      <a href={withBase('/about/')}>查看关于页 →</a>
     </div>
   </section>
 </BaseLayout>
