@@ -15,7 +15,7 @@ describe('production build', () => {
 
 describe('diary code windows', () => {
   it('defines the window structure and plaintext fallback', () => {
-    const layout = fs.readFileSync(path.resolve('src/components/CodeCopyButton.astro'), 'utf8');
+    const layout = fs.readFileSync(path.resolve('src/features/diary/components/CodeCopyButton.astro'), 'utf8');
     const styles = fs.readFileSync(path.resolve('src/styles/editorial.css'), 'utf8');
 
     expect(layout).toContain('code-window');
@@ -23,5 +23,12 @@ describe('diary code windows', () => {
     expect(layout).toContain('dataset.language');
     expect(styles).toContain('.code-window__title');
     expect(styles).toContain('counter-reset: code-line');
+  });
+});
+
+describe('guestbook page semantics', () => {
+  it('emits exactly one main landmark', () => {
+    const html = fs.readFileSync(path.resolve('dist/guestbook/index.html'), 'utf8');
+    expect(html.match(/<main\b/g)).toHaveLength(1);
   });
 });

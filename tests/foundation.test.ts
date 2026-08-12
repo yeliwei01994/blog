@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SITE } from '../src/config/site';
+import { SITE } from '../src/site/site-config';
 
 describe('site configuration', () => {
   it('defines a usable editorial identity', () => {

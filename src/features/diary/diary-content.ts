@@ -1,5 +1,5 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
-import { sortAndFilterEntries } from './diary';
+import { sortAndFilterEntries } from './diary-utils';
 
 export type ContentDiaryEntry = CollectionEntry<'diary'>;
 

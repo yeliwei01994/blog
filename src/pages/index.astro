@@ -1,9 +1,9 @@
 ---
-import HeroFeature from '../components/HeroFeature.astro';
-import DiaryCard from '../components/DiaryCard.astro';
+import HeroFeature from '../features/home/HeroFeature.astro';
+import DiaryCard from '../features/diary/components/DiaryCard.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { getPublishedDiaryEntries } from '../lib/content';
-import { withBase } from '../lib/urls';
+import { getPublishedDiaryEntries } from '../features/diary/diary-content';
+import { withBase } from '../site/site-url';
 
 const entries = await getPublishedDiaryEntries();
 ---

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getAdjacentEntries, sortAndFilterEntries } from '../src/lib/diary';
+import { getAdjacentEntries, sortAndFilterEntries } from '../src/features/diary/diary-utils';
 
 const entry = (id: string, date: string, draft = false) => ({
   id,

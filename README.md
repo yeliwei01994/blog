@@ -21,6 +21,7 @@ npm run dev
 npm test -- --run
 npm run check
 npm run build
+npm run verify
 npm run preview
 ```
 
@@ -71,12 +72,36 @@ draft: false
 
 ```text
 src/
-├─ components/       可复用界面组件
-├─ config/site.ts    站点身份与导航
 ├─ content/diary/    Markdown/MDX 日记
+├─ features/         日记、首页、留言板等业务能力
 ├─ layouts/          基础页面与文章布局
-├─ lib/              内容查询与 URL 工具
 ├─ pages/            Astro 路由
-├─ scripts/          搜索等渐进增强逻辑
+├─ site/             站点配置、壳组件与 URL 工具
 └─ styles/           设计 Token 与编辑部版式
 ```
+
+## 留言板 API
+
+留言板是一个独立的本地练习 API，代码位于 `api/`，需要 PostgreSQL 与 `api/.env` 中的 `DATABASE_URL`：
+
+```bash
+npm --prefix api run dev
+```
+
+它保持独立于 GitHub Pages 静态部署；博客端通过 `PUBLIC_API_BASE_URL` 访问它。本地未设置该变量时，会使用 `http://localhost:3000`。
+
+## 命名约定
+
+- TypeScript 变量、函数和 JSON / HTTP 字段使用 `camelCase`，例如 `apiBaseUrl`、`createdAt`。
+- TypeScript 类型与 Astro 组件使用 `PascalCase`，例如 `DiaryCard`、`GuestbookMessage`。
+- TypeScript 文件、目录和 CSS 类使用 `kebab-case`；Astro 组件文件保留 `PascalCase.astro`。
+- 环境变量使用 `UPPER_SNAKE_CASE`，例如 `DATABASE_URL`、`PUBLIC_API_BASE_URL`。
+- PostgreSQL 表、列和 SQL migration 使用 `snake_case`，例如 `guestbook_messages`、`created_at`。
+
+命名服从其所在生态的约定：不强行把数据库、环境变量或 Astro 路由改成驼峰命名。
+
+## 项目文档
+
+- [项目结构](docs/architecture/project-structure.md)：根目录与源码模块职责。
+- [设计系统](docs/design-system/master.md)：视觉与版式规则。
+- `docs/archive/`：历史设计和实施计划，仅供追溯，不参与运行。
