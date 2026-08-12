@@ -16,7 +16,7 @@ pnpm-debug.log*
 # environment variables
 .env
 .env.production
-api/.env
+apps/guestbook-api/.env
 
 # macOS-specific files
 .DS_Store

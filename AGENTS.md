@@ -1,8 +1,11 @@
 ## Development
 
+The Astro application lives in `apps/web`. Run web development commands from that directory, or prefix them with `npm --prefix apps/web` from the repository root.
+
 When starting the dev server, use background mode:
 
 ```
+cd apps/web
 astro dev --background
 ```
 
