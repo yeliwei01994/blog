@@ -14,9 +14,9 @@ const { entry, headings, previous, next } = Astro.props;
 
 <BaseLayout title={entry.data.title} description={entry.data.description} image={entry.data.cover} article>
   <ReadingProgress />
-  <header class="article-hero shell"><p class="eyebrow">Diary / {entry.id}</p><h1>{entry.data.title}</h1><p class="hero-intro">{entry.data.description}</p><ArticleMeta publishedAt={entry.data.publishedAt} /></header>
+  <header class="article-header shell"><div class="article-header__content"><p class="eyebrow">日记 · {entry.data.publishedAt.toLocaleDateString('zh-CN')}</p><h1>{entry.data.title}</h1><p class="article-summary">{entry.data.description}</p><ArticleMeta publishedAt={entry.data.publishedAt} /></div></header>
   {entry.data.cover && <img class="article-cover" src={withBase(entry.data.cover)} alt="" width="1600" height="900" />}
-  <div class="article-shell shell"><TableOfContents headings={headings} /><article class="article-body"><slot /></article><aside class="article-aside"><p class="eyebrow">FORM / FUTURE</p><p>PERSONAL NOTE<br />{entry.data.publishedAt.getFullYear()}</p></aside></div>
+  <div class="article-reading-shell shell"><div class="article-toc"><TableOfContents headings={headings} /></div><article class="article-body"><slot /></article></div>
   <nav class="article-nav shell" aria-label="相邻日记">{previous ? <a href={withBase(`/diary/${previous.id}/`)}><span>较新一篇</span><strong>{previous.data.title}</strong></a> : <span></span>}{next ? <a href={withBase(`/diary/${next.id}/`)}><span>较早一篇</span><strong>{next.data.title}</strong></a> : <span></span>}</nav>
   <CodeCopyButton />
 </BaseLayout>
