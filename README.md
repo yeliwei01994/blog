@@ -9,8 +9,8 @@
 需要 Node.js 22.12 或更高版本。
 
 ```bash
-npm install
-npm run dev
+npm --prefix apps/web install
+npm --prefix apps/web run dev
 ```
 
 开发地址默认是 `http://localhost:4321/blog/`。
@@ -18,18 +18,18 @@ npm run dev
 ## 常用检查
 
 ```bash
-npm test -- --run
-npm run check
-npm run build
-npm run verify
-npm run preview
+npm --prefix apps/web test -- --run
+npm --prefix apps/web run check
+npm --prefix apps/web run build
+npm --prefix apps/web run verify
+npm --prefix apps/web run preview
 ```
 
-构建结果位于 `dist/`。
+构建结果位于 `apps/web/dist/`。
 
 ## 写一篇日记
 
-复制 `src/content/diary/_template.md`，重命名后开始写作：
+复制 `apps/web/src/content/diary/_template.md`，重命名后开始写作：
 
 ```yaml
 ---
@@ -42,19 +42,19 @@ draft: false
 ```
 
 - `draft: true` 的日记不会出现在网站中。
-- 封面文件建议放在 `public/images/`，并填写从站点根开始的路径。
-- 内容字段由 `src/content.config.ts` 校验，错误会在检查或构建阶段报告。
+- 封面文件建议放在 `apps/web/public/images/`，并填写从站点根开始的路径。
+- 内容字段由 `apps/web/src/content.config.ts` 校验，错误会在检查或构建阶段报告。
 
 ## 修改站点信息
 
-编辑 `src/config/site.ts` 可以修改：
+编辑 `apps/web/src/site/site-config.ts` 可以修改：
 
 - 站点名称与介绍
 - 作者名称
 - 主导航
 - GitHub 等社交链接
 
-主题色、字体、间距和深浅色变量位于 `src/styles/global.css`；页面栅格与文章排版位于 `src/styles/editorial.css`。
+主题色、字体、间距和深浅色变量位于 `apps/web/src/styles/global.css`；页面栅格与文章排版位于 `apps/web/src/styles/editorial.css`。
 
 ## GitHub Pages 部署
 
@@ -66,26 +66,25 @@ draft: false
 2. 将 `Source` 设置为 `GitHub Actions`
 3. 推送一次 `main` 分支，等待 `Deploy Astro site to GitHub Pages` 工作流完成
 
-如果仓库名或域名发生变化，请修改 `astro.config.mjs` 中的 `site` 与 `base`，或者在构建环境中提供 `SITE_URL` 和 `BASE_PATH`。
+如果仓库名或域名发生变化，请修改 `apps/web/astro.config.mjs` 中的 `site` 与 `base`，或者在构建环境中提供 `SITE_URL` 和 `BASE_PATH`。
 
 ## 项目结构
 
 ```text
-src/
-├─ content/diary/    Markdown/MDX 日记
-├─ features/         日记、首页、留言板等业务能力
-├─ layouts/          基础页面与文章布局
-├─ pages/            Astro 路由
-├─ site/             站点配置、壳组件与 URL 工具
-└─ styles/           设计 Token 与编辑部版式
+apps/
+├─ web/                   Astro 静态博客
+│  ├─ src/                页面、内容、功能模块与样式
+│  ├─ public/             静态资源
+│  └─ tests/              前端测试
+└─ guestbook-api/         Node + PostgreSQL 留言 API
 ```
 
 ## 留言板 API
 
-留言板是一个独立的本地练习 API，代码位于 `api/`，需要 PostgreSQL 与 `api/.env` 中的 `DATABASE_URL`：
+留言板是一个独立的本地练习 API，代码位于 `apps/guestbook-api/`，需要 PostgreSQL 与 `apps/guestbook-api/.env` 中的 `DATABASE_URL`：
 
 ```bash
-npm --prefix api run dev
+npm --prefix apps/guestbook-api run dev
 ```
 
 它保持独立于 GitHub Pages 静态部署；博客端通过 `PUBLIC_API_BASE_URL` 访问它。本地未设置该变量时，会使用 `http://localhost:3000`。

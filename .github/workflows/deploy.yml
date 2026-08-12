@@ -23,6 +23,7 @@ jobs:
       - name: Build and upload Astro site
         uses: withastro/action@v3
         with:
+          path: apps/web
           node-version: 24
 
   deploy:
