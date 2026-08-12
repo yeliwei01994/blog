@@ -1,0 +1,12 @@
+.guestbook-page { padding-bottom: 5rem; }
+.guestbook-page .eyebrow { color: var(--color-accent, #b05b3b); font-size: 0.8rem; letter-spacing: 0.12em; text-transform: uppercase; }
+.messages-panel { max-width: 720px; margin-top: 2rem; }
+.message-form { display: grid; gap: 0.75rem; margin-bottom: 2rem; }
+.message-form input, .message-form textarea { padding: 0.75rem; font: inherit; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 0.5rem; }
+.message-form textarea { min-height: 7rem; resize: vertical; }
+.message-form button { width: fit-content; padding: 0.65rem 1rem; cursor: pointer; }
+.messages-list { display: grid; gap: 1rem; }
+.message-card { padding: 1.25rem; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 0.75rem; }
+.message-card__meta { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 0.75rem; }
+.message-card time { opacity: 0.65; font-size: 0.85rem; }
+.message-card p { margin: 0; line-height: 1.7; }

@@ -1,10 +1,10 @@
 ---
-import ArticleMeta from '../components/ArticleMeta.astro';
-import CodeCopyButton from '../components/CodeCopyButton.astro';
-import ReadingProgress from '../components/ReadingProgress.astro';
-import TableOfContents from '../components/TableOfContents.astro';
-import type { ContentDiaryEntry } from '../lib/content';
-import { withBase } from '../lib/urls';
+import ArticleMeta from '../features/diary/components/ArticleMeta.astro';
+import CodeCopyButton from '../features/diary/components/CodeCopyButton.astro';
+import ReadingProgress from '../features/diary/components/ReadingProgress.astro';
+import TableOfContents from '../features/diary/components/TableOfContents.astro';
+import type { ContentDiaryEntry } from '../features/diary/diary-content';
+import { withBase } from '../site/site-url';
 import BaseLayout from './BaseLayout.astro';
 
 interface Heading { depth: number; slug: string; text: string; }

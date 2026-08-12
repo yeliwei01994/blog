@@ -1,7 +1,7 @@
 ---
-import DiaryCard from '../../components/DiaryCard.astro';
+import DiaryCard from '../../features/diary/components/DiaryCard.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { getPublishedDiaryEntries } from '../../lib/content';
+import { getPublishedDiaryEntries } from '../../features/diary/diary-content';
 const entries = await getPublishedDiaryEntries();
 ---
 

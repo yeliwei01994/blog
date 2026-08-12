@@ -1,8 +1,8 @@
 ---
 import { render } from 'astro:content';
 import DiaryLayout from '../../layouts/DiaryLayout.astro';
-import { getPublishedDiaryEntries, type ContentDiaryEntry } from '../../lib/content';
-import { getAdjacentEntries } from '../../lib/diary';
+import { getPublishedDiaryEntries, type ContentDiaryEntry } from '../../features/diary/diary-content';
+import { getAdjacentEntries } from '../../features/diary/diary-utils';
 
 export async function getStaticPaths() {
   const entries = await getPublishedDiaryEntries();

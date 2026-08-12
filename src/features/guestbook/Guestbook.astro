@@ -1,0 +1,28 @@
+---
+import './guestbook.css';
+
+interface Props {
+  apiBaseUrl: string;
+}
+
+const { apiBaseUrl } = Astro.props;
+---
+
+<section class="messages-panel" data-guestbook data-api-base-url={apiBaseUrl} aria-live="polite">
+  <form class="message-form" data-message-form>
+    <input name="name" placeholder="你的名字" maxlength="80" required />
+    <textarea name="message" placeholder="写一句留言" maxlength="2000" required></textarea>
+    <button type="submit">提交留言</button>
+    <p data-form-status></p>
+  </form>
+  <p data-messages-status>正在加载留言……</p>
+  <div class="messages-list" data-messages-list></div>
+</section>
+
+<script>
+  import { initializeGuestbook } from './guestbook-client';
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-guestbook]')) {
+    void initializeGuestbook(root, root.dataset.apiBaseUrl ?? 'http://localhost:3000');
+  }
+</script>

@@ -12,6 +12,9 @@
     "preview": "astro preview",
     "check": "astro check",
     "test": "vitest",
+    "test:api": "npm --prefix api test",
+    "check:api": "npm --prefix api run check",
+    "verify": "npm run build && npm test -- --run && npm run check && npm run test:api && npm run check:api",
     "astro": "astro"
   },
   "dependencies": {
