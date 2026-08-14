@@ -9,5 +9,6 @@ describe('diary article route', () => {
     render(<App />);
     expect(screen.getByRole('article')).toHaveTextContent('项目结构、Docker 与 Rust 的理解');
     expect(screen.getByRole('navigation', { name: '文章目录' })).toBeInTheDocument();
+    expect(document.querySelector('.code-window')).toBeInTheDocument();
   });
 });
