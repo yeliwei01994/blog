@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { App } from '../src/app/App';
 
 describe('diary article route', () => {
@@ -18,5 +18,17 @@ describe('diary article route', () => {
     expect(link).not.toBeNull();
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  it('keeps code windows after an in-page table-of-contents navigation', () => {
+    render(<App />);
+    expect(document.querySelector('.code-window')).toBeInTheDocument();
+
+    act(() => {
+      window.history.pushState(null, '', '#21-packages-的职责');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    expect(document.querySelector('.code-window')).toBeInTheDocument();
   });
 });
