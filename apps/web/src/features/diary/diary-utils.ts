@@ -1,21 +1,11 @@
-export interface DiaryEntryData {
-  title: string;
-  description: string;
-  publishedAt: Date;
-  updatedAt?: Date;
-  cover?: string;
-  draft: boolean;
-}
+import type { DiaryArticle } from './diary-types';
 
-export interface DiaryEntry {
-  id: string;
-  data: DiaryEntryData;
-}
+export type DiaryEntry = Pick<DiaryArticle, 'id' | 'title' | 'description' | 'publishedAt' | 'draft'>;
 
 export function sortAndFilterEntries<T extends DiaryEntry>(entries: T[]): T[] {
   return entries
-    .filter((entry) => !entry.data.draft)
-    .sort((a, b) => b.data.publishedAt.getTime() - a.data.publishedAt.getTime());
+    .filter((entry) => !entry.draft)
+    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
 }
 
 export function getAdjacentEntries<T extends DiaryEntry>(entries: T[], id: string) {
