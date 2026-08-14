@@ -1,0 +1,5 @@
+import { useEffect, useState } from 'react';
+import './guestbook.css';
+export interface GuestbookMessage { id: number; name: string; message: string; createdAt: string; }
+export function createMessagesUrl(apiBaseUrl: string) { return `${apiBaseUrl.replace(/\/+$/, '')}/api/messages`; }
+export function Guestbook({ apiBaseUrl }: { apiBaseUrl: string }) { const [messages, setMessages] = useState<GuestbookMessage[]>([]); const [status, setStatus] = useState('正在加载留言……'); useEffect(() => { fetch(createMessagesUrl(apiBaseUrl)).then(async r => { if (!r.ok) throw new Error(); return r.json() as Promise<GuestbookMessage[]>; }).then(items => { setMessages(items); setStatus(items.length ? '' : '还没有留言。'); }).catch(() => setStatus('暂时无法加载留言，请确认本地 API 正在运行。')); }, [apiBaseUrl]); return <section className="messages-panel" aria-live="polite"><p>{status}</p><div className="messages-list">{messages.map(item => <article className="message-card" key={item.id}><div className="message-card__meta"><strong>{item.name}</strong><time>{new Date(item.createdAt).toLocaleString()}</time></div><p>{item.message}</p></article>)}</div></section>; }
