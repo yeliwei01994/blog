@@ -1,27 +1,13 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-describe('route inventory', () => {
-  for (const route of [
-    'index.astro',
-    'diary/index.astro',
-    'diary/[...id].astro',
-    'about.astro',
-    '404.astro',
-  ]) {
-    it(`contains ${route}`, () => {
-      expect(fs.existsSync(`src/pages/${route}`)).toBe(true);
-    });
+describe('React route inventory', () => {
+  for (const route of ['HomePage.tsx', 'DiaryIndexPage.tsx', 'DiaryArticlePage.tsx', 'AboutPage.tsx', 'GuestbookPage.tsx', 'NotFoundPage.tsx']) {
+    it(`contains ${route}`, () => expect(fs.existsSync(`src/app/pages/${route}`)).toBe(true));
   }
 
-  for (const removedRoute of [
-    'posts/index.astro',
-    'archive/index.astro',
-    'tags/index.astro',
-    'search-index.json.ts',
-  ]) {
-    it(`removes ${removedRoute}`, () => {
-      expect(fs.existsSync(`src/pages/${removedRoute}`)).toBe(false);
-    });
-  }
+  it('removes Astro page sources', () => {
+    expect(fs.existsSync('src/pages/index.astro')).toBe(false);
+    expect(fs.existsSync('astro.config.mjs')).toBe(false);
+  });
 });
