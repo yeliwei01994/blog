@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>正在跳转…</title>
+    <script>
+      const basePath = '/blog';
+      const requestedPath = window.location.pathname.startsWith(basePath)
+        ? window.location.pathname.slice(basePath.length) || '/'
+        : window.location.pathname;
+      window.sessionStorage.setItem('github-pages-path', requestedPath + window.location.search + window.location.hash);
+      window.location.replace(`${basePath}/`);
+    </script>
+  </head>
+  <body></body>
+</html>

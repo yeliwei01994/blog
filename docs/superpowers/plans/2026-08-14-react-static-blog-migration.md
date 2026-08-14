@@ -49,7 +49,7 @@
 **Interfaces:**
 - Produces: `App`, the application root rendered by `src/main.tsx`.
 - Produces: `withBase(path: string, base?: string): string`, retained in `src/site/site-url.ts` for all internal links.
-- Produces: `npm run generate:content`, `npm run build`, `npm run check`, and `npm test` commands for later tasks.
+- Produces: `npm run build`, `npm run check`, and `npm test` commands for later tasks. Task 2 adds `npm run generate:content` and makes the build command invoke it first.
 
 - [ ] **Step 1: Write the failing Vite build-output test**
 
@@ -72,7 +72,7 @@ Expected: FAIL because the existing Astro build does not provide the Vite root m
 
 - [ ] **Step 3: Install and configure Vite React**
 
-Replace `astro`, `@astrojs/*`, and MDX dependencies with `vite`, `@vitejs/plugin-react`, `react`, `react-dom`, `react-router-dom`, `gray-matter`, `marked`, and compatible type/testing dependencies. Define scripts so `build` runs content generation before `vite build`, `dev` starts Vite, and `check` runs `tsc --noEmit`.
+Replace `astro`, `@astrojs/*`, and MDX dependencies with `vite`, `@vitejs/plugin-react`, `react`, `react-dom`, `react-router-dom`, and compatible type/testing dependencies. Define scripts so `build` runs `vite build`, `dev` starts Vite, and `check` runs `tsc --noEmit`.
 
 ```ts
 export default defineConfig({
@@ -135,7 +135,7 @@ Expected: FAIL because `generateDiaryContent` does not exist.
 
 - [ ] **Step 3: Implement content generation**
 
-Read `src/content/diary/*.md`, ignore `_template.md`, parse frontmatter with `gray-matter`, validate the fields currently defined in `content.config.ts`, render Markdown with `marked`, and extract stable IDs from headings. Write a deterministic TypeScript module exporting `diaryArticles`. Use the existing newest-first sort and draft filter semantics. Do not mutate source Markdown files.
+Read `src/content/diary/*.md`, ignore `_template.md`, parse frontmatter with `gray-matter`, validate the fields currently defined in `content.config.ts`, render Markdown with `marked`, and extract stable IDs from headings. Write a deterministic TypeScript module exporting `diaryArticles`. Use the existing newest-first sort and draft filter semantics. Do not mutate source Markdown files. Add `tsx` and the `generate:content` script, then update `build` to run `npm run generate:content && vite build`.
 
 - [ ] **Step 4: Convert diary utility tests and implementation types**
 
