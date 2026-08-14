@@ -65,6 +65,36 @@ draft: true
     expect(fs.readFileSync(outputFile, 'utf8')).toContain('"id": "2026-08-14"');
   });
 
+  it('extracts and anchors headings through level five for the article table of contents', async () => {
+    const sourceDirectory = createFixtureDirectory();
+    const outputFile = path.join(sourceDirectory, 'generated-diary.ts');
+    writeDiary(sourceDirectory, '2026-08-14.md', `---
+title: Nested headings
+description: A published entry
+publishedAt: 2026-08-14
+draft: false
+---
+
+## 2 Section
+
+### 2.1 Subsection
+
+#### 2.1.1 Detail
+
+##### 2.1.1.1 Deep detail`);
+
+    const [article] = await generateDiaryContent({ sourceDirectory, outputFile });
+
+    expect(article.headings).toEqual([
+      { depth: 2, slug: '2-section', text: '2 Section' },
+      { depth: 3, slug: '21-subsection', text: '2.1 Subsection' },
+      { depth: 4, slug: '211-detail', text: '2.1.1 Detail' },
+      { depth: 5, slug: '2111-deep-detail', text: '2.1.1.1 Deep detail' },
+    ]);
+    expect(article.html).toContain('<h4 id="211-detail">2.1.1 Detail</h4>');
+    expect(article.html).toContain('<h5 id="2111-deep-detail">2.1.1.1 Deep detail</h5>');
+  });
+
   it('rejects invalid frontmatter with its source filename', async () => {
     const sourceDirectory = createFixtureDirectory();
     writeDiary(sourceDirectory, 'invalid.md', `---

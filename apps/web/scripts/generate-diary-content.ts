@@ -46,9 +46,9 @@ function extractHeadings(markdown: string): DiaryHeading[] {
   const headings: DiaryHeading[] = [];
 
   for (const line of markdown.split(/\r?\n/)) {
-    const match = /^(#{2,3})\s+(.+?)\s*#*\s*$/.exec(line);
+    const match = /^(#{2,5})\s+(.+?)\s*#*\s*$/.exec(line);
     if (!match) continue;
-    const depth = match[1].length as 2 | 3;
+    const depth = match[1].length as 2 | 3 | 4 | 5;
     const text = match[2].replace(/[`*_]/g, '').trim();
     headings.push({ depth, slug: slugify(text, usedSlugs), text });
   }
@@ -58,7 +58,7 @@ function extractHeadings(markdown: string): DiaryHeading[] {
 
 function addHeadingIds(html: string, headings: DiaryHeading[]): string {
   let headingIndex = 0;
-  return html.replace(/<h([23])>([\s\S]*?)<\/h\1>/g, (match, depth: string) => {
+  return html.replace(/<h([2-5])>([\s\S]*?)<\/h\1>/g, (match, depth: string) => {
     const heading = headings[headingIndex++];
     if (!heading || heading.depth !== Number(depth)) return match;
     return `<h${depth} id="${heading.slug}">${match.slice(4, -5)}</h${depth}>`;

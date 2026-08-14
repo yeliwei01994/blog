@@ -11,4 +11,12 @@ describe('diary article route', () => {
     expect(screen.getByRole('navigation', { name: '文章目录' })).toBeInTheDocument();
     expect(document.querySelector('.code-window')).toBeInTheDocument();
   });
+
+  it('opens diary-body links in a new safe tab', () => {
+    render(<App />);
+    const link = document.querySelector('.article-body a');
+    expect(link).not.toBeNull();
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
 });

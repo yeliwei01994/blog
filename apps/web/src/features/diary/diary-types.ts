@@ -1,5 +1,5 @@
 export interface DiaryHeading {
-  depth: 2 | 3;
+  depth: 2 | 3 | 4 | 5;
   slug: string;
   text: string;
 }
