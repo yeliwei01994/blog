@@ -7,7 +7,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "npm run generate:content && vite",
     "generate:content": "tsx scripts/generate-diary-content.ts",
     "build": "npm run generate:content && vite build",
     "preview": "vite preview",

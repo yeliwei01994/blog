@@ -95,6 +95,26 @@ draft: false
     expect(article.html).toContain('<h5 id="2111-deep-detail">2.1.1.1 Deep detail</h5>');
   });
 
+  it('copies article assets and preserves relative image references', async () => {
+    const sourceDirectory = createFixtureDirectory();
+    const outputFile = path.join(sourceDirectory, 'generated-diary.ts');
+    const assetOutputDirectory = path.join(sourceDirectory, 'public', 'diary');
+    writeDiary(sourceDirectory, '2026-08-18.md', `---
+title: Images
+description: An article with an image
+publishedAt: 2026-08-18
+draft: false
+---
+
+![Architecture diagram](./image.png)`);
+    fs.writeFileSync(path.join(sourceDirectory, 'image.png'), 'fake-png', 'utf8');
+
+    const [article] = await generateDiaryContent({ sourceDirectory, outputFile, assetOutputDirectory });
+
+    expect(article.html).toContain('<img src="./image.png" alt="Architecture diagram">');
+    expect(fs.readFileSync(path.join(assetOutputDirectory, '2026-08-18', 'image.png'), 'utf8')).toBe('fake-png');
+  });
+
   it('rejects invalid frontmatter with its source filename', async () => {
     const sourceDirectory = createFixtureDirectory();
     writeDiary(sourceDirectory, 'invalid.md', `---

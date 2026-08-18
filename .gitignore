@@ -1,5 +1,6 @@
 # build output
 dist/
+apps/web/public/diary/
 # generated types
 .astro/
 
