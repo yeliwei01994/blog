@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import matter from 'gray-matter';
-import { marked } from 'marked';
+import { marked, Renderer } from 'marked';
 import type { DiaryArticle, DiaryHeading } from '../src/features/diary/diary-types';
 
 export interface GenerateDiaryContentOptions {
@@ -66,6 +66,15 @@ function addHeadingIds(html: string, headings: DiaryHeading[]): string {
   });
 }
 
+function renderMarkdown(markdown: string): string {
+  const renderer = new Renderer();
+  renderer.image = ({ href, title, text }) => {
+    const image = `<img src="${href}" alt="${text}"${title ? ` title="${title}"` : ''}>`;
+    return title ? `<figure>${image}<figcaption>${title}</figcaption></figure>` : image;
+  };
+  return marked.parse(markdown, { renderer }) as string;
+}
+
 function toArticle(filename: string, markdown: string): Promise<DiaryArticle | undefined> {
   const parsed = matter(markdown);
   const title = getRequiredString(parsed.data.title, 'title', filename);
@@ -79,7 +88,7 @@ function toArticle(filename: string, markdown: string): Promise<DiaryArticle | u
 
   const headings = extractHeadings(parsed.content);
   const id = path.basename(filename, path.extname(filename));
-  return Promise.resolve(marked.parse(parsed.content)).then((html) => ({
+  return Promise.resolve(renderMarkdown(parsed.content)).then((html) => ({
     id,
     title,
     description,

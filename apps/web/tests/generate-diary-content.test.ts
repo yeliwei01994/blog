@@ -106,12 +106,13 @@ publishedAt: 2026-08-18
 draft: false
 ---
 
-![Architecture diagram](./image.png)`);
+![Architecture diagram](./image.png "Architecture overview")`);
     fs.writeFileSync(path.join(sourceDirectory, 'image.png'), 'fake-png', 'utf8');
 
     const [article] = await generateDiaryContent({ sourceDirectory, outputFile, assetOutputDirectory });
 
-    expect(article.html).toContain('<img src="./image.png" alt="Architecture diagram">');
+    expect(article.html).toContain('<img src="./image.png" alt="Architecture diagram" title="Architecture overview">');
+    expect(article.html).toContain('<figcaption>Architecture overview</figcaption>');
     expect(fs.readFileSync(path.join(assetOutputDirectory, '2026-08-18', 'image.png'), 'utf8')).toBe('fake-png');
   });
 
