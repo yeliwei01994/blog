@@ -29,6 +29,9 @@
 .post-card h3 a { text-decoration: none; }
 .post-card h3 a::after { position: absolute; inset: 0; content: ''; }
 .post-card p { margin: 0; color: var(--color-muted); }
+.diary-toggle { display: block; min-width: 12rem; min-height: 3rem; margin: var(--space-8) auto 0; padding: .7rem 1.25rem; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); color: var(--color-accent); cursor: pointer; font: 600 .9rem/1 var(--font-body); transition: border-color 200ms var(--ease-out), background-color 200ms var(--ease-out), transform 200ms var(--ease-out); }
+.diary-toggle:hover { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface)); transform: translateY(-1px); }
+.diary-toggle:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 .empty-state { display: grid; grid-template-columns: auto 1fr; gap: var(--space-8); align-items: center; min-height: 16rem; padding: var(--space-8); border: var(--border); border-radius: var(--radius-card); background: var(--color-surface); }
 .empty-state span { color: var(--color-accent); font: 600 clamp(4rem, 9vw, 7rem)/.8 var(--font-display); }
 .empty-state p { max-width: 32rem; margin: 0; font: 600 clamp(1.4rem, 3vw, 2.3rem)/1.1 var(--font-display); }

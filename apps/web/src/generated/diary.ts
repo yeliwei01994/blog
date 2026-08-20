@@ -3,6 +3,136 @@ import type { DiaryArticle } from '../features/diary/diary-types';
 
 export const diaryArticles: DiaryArticle[] = [
   {
+    "id": "2026-08-20",
+    "title": "8/20 Redis：缓存、数据结构与可靠性",
+    "description": "记录 Redis 的缓存机制、基础数据结构、消息与原子操作，以及持久化和缓存问题等学习过程",
+    "publishedAt": "2026-08-20",
+    "draft": false,
+    "html": "<h3 id=\"redis缓存数据结构与可靠性\">Redis：缓存、数据结构与可靠性</h3>\n<h4 id=\"redis-是什么\">Redis 是什么</h4>\n<p>Redis 是一个开源的、基于内存的键值型数据库，也可以称为内存数据结构服务。\nRedis 中的数据以 Key-Value 的形式保存。\nRedis 不仅支持简单的字符串，还支持多种数据结构：String：字符串，Hash：哈希，适合保存对象，List：列表，适合实现队列，Set：集合，自动去重，Sorted Set：有序集合，适合实现排行榜，Stream：消息流。\nRedis 的数据主要存储在内存中，因此读写速度很快。它经常被用作缓存，减少应用程序对 MySQL 等数据库的访问压力。\nRedis 的典型使用场景，假设维护了一个 商品服务，它背后直连 MySQL 数据库。假设商品服务需要对外提供 每秒 1w 次查询，但背后的 MySQL 却只能提供每秒 5k 次查询，这类大流量查询场景非常常见，这时候加一层Redis就能解决这个问题。\nRedis最主要的能力就是本地缓存，查询内存的速度比查询磁盘要快， MySQL 数据主要存放在磁盘里，如果能将 MySQL 里的数据放内存里，查询完全不走磁盘，那必然能大大提升查询性能。当用户查询商品时，程序可以先查询 Redis：</p>\n<pre><code>用户请求\n   ↓\n查询 Redis\n   ↓\n缓存命中：直接返回\n   ↓\n缓存未命中：查询 MySQL\n   ↓\n将查询结果写入 Redis\n</code></pre>\n<p>除此之外还有登录状态和 Token，用户登录后，可以将 Token 保存到 Redis，并设置过期时间，还有Redis 可以快速实现访问量、点赞数、库存数量等计数功能，使用 List 可以实现简单的任务队列。\nRedis 为什么速度快，主要原因有几点，1. 数据主要保存在内存中，减少磁盘 I/O。Redis 内置了多种高效数据结构。命令执行模型简单，核心命令通常通过事件循环处理。Redis 使用轻量级的通信协议。很多常用操作的时间复杂度较低，例如 GET、SET 通常是 O(1)。 一些常用的命令：</p>\n<table>\n<thead>\n<tr>\n<th align=\"left\">命令</th>\n<th align=\"center\">作用</th>\n</tr>\n</thead>\n<tbody><tr>\n<td align=\"left\"><code>PING</code></td>\n<td align=\"center\">检查 Redis 是否正常连接</td>\n</tr>\n<tr>\n<td align=\"left\"><code>SET</code></td>\n<td align=\"center\">保存字符串数据</td>\n</tr>\n<tr>\n<td align=\"left\"><code>GET</code></td>\n<td align=\"center\">获取字符串数据</td>\n</tr>\n<tr>\n<td align=\"left\"><code>EXISTS</code></td>\n<td align=\"center\">判断 Key 是否存在</td>\n</tr>\n<tr>\n<td align=\"left\"><code>TYPE</code></td>\n<td align=\"center\">查看 Value 的数据类型</td>\n</tr>\n<tr>\n<td align=\"left\"><code>DEL</code></td>\n<td align=\"center\">删除 Key</td>\n</tr>\n</tbody></table>\n<h4 id=\"基础数据stringhash-与缓存使用\">基础数据：String、Hash 与缓存使用</h4>\n<p>Redis 是一个基于内存的键值型数据库，数据通过 Key-Value 的形式保存。Key 用于查找数据，Value 用于保存具体内容。例如 user:1001:name 是 Key，张三 是 Value。Redis 的 Key 通常使用冒号进行命名，例如 user:1001:name、article:1001:views、login:code:13800138000，这样可以体现数据的业务含义，方便后续管理。\nRedis 中最基本的数据类型是 String，可以保存普通文本、数字、Token、验证码和 JSON 字符串等内容。通过 SET 命令可以保存数据，GET 命令可以读取数据：</p>\n<pre><code class=\"language-redis\">SET user:1001:name &quot;张三&quot;\nGET user:1001:name\n</code></pre>\n<p>执行后可以读取到“张三”。如果对同一个 Key 再次执行 SET，新的值会覆盖旧的值：</p>\n<pre><code class=\"language-redis\">SET user:1001:name &quot;李四&quot;\nGET user:1001:name\n```Redis\n最终结果为“李四”。如果需要同时读取多个 Key，可以使用 MGET：\n```redis\nSET user:1001:age 20\nSET user:1001:city &quot;深圳&quot;\nMGET user:1001:name user:1001:age user:1001:city\n```Redis\nMGET 可以一次获取多个 Key，减少客户端与 Redis 之间的网络交互次数。\nRedis 还可以对保存为数字的 String 进行自增操作。例如实现文章阅读量统计：\n```redis\nSET article:1001:views 0\nINCR article:1001:views\nINCRBY article:1001:views 10\nGET article:1001:views\n</code></pre>\n<p>其中 INCR 表示自增 1，INCRBY 表示按照指定数值增加。执行完成后，阅读量会从 0 增加到 11。Redis 的这种计数操作可以应用于文章阅读量、点赞数、接口访问次数等场景。如果 Key 中保存的不是数字，例如保存的是“张三”，则不能使用 INCR 进行增加。\n缓存数据通常不应该永久保存，因此 Redis 支持设置过期时间。例如保存一个 60 秒后失效的验证码：</p>\n<pre><code class=\"language-redis\">SET login:code:13800138000 &quot;9527&quot; EX 60\nTTL login:code:13800138000\n</code></pre>\n<p>EX 60 表示过期时间为 60 秒，TTL 用于查看剩余秒数。如果返回正数，表示 Key 还存在并且还有对应的剩余时间；返回 -1 表示 Key 存在但没有设置过期时间；返回 -2 表示 Key 不存在或已经过期。也可以分两步设置过期时间：</p>\n<pre><code class=\"language-redis\">SET product:1001 &quot;手机&quot;\nEXPIRE product:1001 30\nTTL product:1001\n</code></pre>\n<p>这表示商品缓存保存 30 秒。过期时间结束后，Redis 会自动删除这个 Key。</p>\n<p>String 适合保存一个简单的值，而 Hash 适合保存一个对象的多个字段。使用 Hash 保存用户信息时，可以执行：</p>\n<pre><code class=\"language-redis\">HSET user:1001 name &quot;张三&quot;\nHSET user:1001 age 20\nHSET user:1001 city &quot;北京&quot;\n</code></pre>\n<p>这里的 user:1001 是 Redis 的 Key，name、age 和 city 是 Hash 内部的字段。可以使用 HGET 获取某一个字段，可以使用 HMGET 一次获取多个字段，如果想查看整个 Hash，可以使用 HGETALL。\n需要注意，HGETALL 会返回这个 Hash 中的全部字段。如果一个 Hash 中保存了很多字段，一次性获取全部内容可能会产生较大的网络开销，因此实际开发中应该根据需要使用 HGET 或 HMGET。删除 Hash 中的字段可以使用 HDEL。Hash 也支持对数字字段进行增加。例如统计用户积分：</p>\n<pre><code class=\"language-redis\">HSET user:1001 score 100\nHINCRBY user:1001 score 10\nHGET user:1001 score\n</code></pre>\n<p>HINCRBY 适合用于积分、余额、数量等数字字段的增加。\nString 和 Hash 都可以保存对象，但使用方式不同。使用多个 String 保存用户信息时，需要创建多个 Key时候 Hash一条指令就可以解决：</p>\n<pre><code class=\"language-redis\">HSET user:1001 name &quot;张三&quot; age 20 city &quot;北京&quot;\n</code></pre>\n<p>因此，当一个对象包含多个相关字段时，Hash 通常更直观，也更方便统一管理。不过 Hash 的过期时间是设置在整个 Key 上的，不能直接给某一个普通字段单独设置过期时间。</p>\n<h4 id=\"队列集合与排序\">队列、集合与排序</h4>\n<p>此外Redis 的常用数据结构，主要包括 List、Set、Sorted Set 和 HyperLogLog。List 适合保存有序数据，可以实现队列和栈；Set 适合保存不重复的数据，可以进行交集、并集和差集操作；Sorted Set 在 Set 的基础上增加了分数，可以实现排行榜；HyperLogLog 则适合进行大规模数据的基数统计。\nList 是一种有序且允许重复元素的数据结构，常用于任务队列、消息列表和最近访问记录。使用 RPUSH 可以从右侧添加元素，使用 LPOP 从左侧取出元素：</p>\n<pre><code class=\"language-redis\">DEL task:queue\nRPUSH task:queue &quot;task-1&quot;\nRPUSH task:queue &quot;task-2&quot;\nRPUSH task:queue &quot;task-3&quot;\nLRANGE task:queue 0 -1\nLPOP task:queue\n</code></pre>\n<p>执行 LRANGE task:queue 0 -1 可以查看整个列表，结果为 task-1、task-2、task-3。执行 LPOP 后会取出并删除最左侧的 task-1。使用 RPUSH 添加、LPOP 取出，可以实现先进先出的队列；使用 LPUSH 添加、LPOP 取出，则可以实现后进先出的栈。LLEN 可以查看列表长度，BLPOP 可以在列表为空时等待新任务，适合实现简单的任务消费功能。\nSet 是一种无序且不允许重复元素的数据结构。使用 SADD 添加元素：</p>\n<pre><code class=\"language-redis\">DEL user:1001:tags\nSADD user:1001:tags &quot;redis&quot;\nSADD user:1001:tags &quot;mysql&quot;\nSADD user:1001:tags &quot;redis&quot;\nSMEMBERS user:1001:tags\n</code></pre>\n<p>虽然 redis 被添加了两次，但 Set 中只会保存一份，因为 Set 会自动去重。使用 SCARD 可以查看集合元素数量，使用 SREM 可以删除指定元素。Set 的一个重要特点是支持集合运算。例如有两个用户的兴趣标签：</p>\n<pre><code class=\"language-redis\">SADD user:1001:tags &quot;redis&quot; &quot;mysql&quot; &quot;rust&quot;\nSADD user:1002:tags &quot;redis&quot; &quot;java&quot; &quot;python&quot;\n</code></pre>\n<p>使用 SINTER 查询两个集合的交集，使用 SUNION 查询并集。使用 SDIFF 查询差集。\nSorted Set，也叫 ZSet，是一种有序集合。它和 Set 一样不允许成员重复，但每个成员都会关联一个分数，Redis 会按照分数进行排序。可以使用 ZADD 添加排行榜数据：</p>\n<pre><code class=\"language-redis\">DEL game:ranking\nZADD game:ranking 98 &quot;张三&quot;\nZADD game:ranking 95 &quot;李四&quot;\nZADD game:ranking 100 &quot;王五&quot;\n</code></pre>\n<p>ZREVRANGE 按照分数从高到低返回结果，WITHSCORES 表示同时返回分数。结果类似：</p>\n<pre><code class=\"language-redis\">ZREVRANGE game:ranking 0 -1 WITHSCORES\n王五\n100\n张三\n98\n李四\n95\n</code></pre>\n<p>ZRANGE可以按照从低到高排序，可以使用 ZSCORE 查询某个成员的分数，也可以使用 ZINCRBY 增加成员分数。\nHyperLogLog 是 Redis 提供的一种基数统计结构，主要用于统计大量数据中不同元素的数量。例如统计网站一天的独立访客数量：</p>\n<pre><code class=\"language-redis\">PFADD website:uv &quot;user-1001&quot;\nPFADD website:uv &quot;user-1002&quot;\nPFADD website:uv &quot;user-1001&quot;\nPFCOUNT website:uv\n</code></pre>\n<p>由于 user-1001 被重复添加，PFCOUNT 统计出的独立用户数量是 2，而不是 3。HyperLogLog 不会保存具体的用户列表，只会对不同元素的数量进行估算，因此占用内存很小，适合统计网站 UV、搜索关键词数量和不同设备数量等场景。\nHyperLogLog 的优点是节省内存，缺点是统计结果是估算值，并且不能查看具体有哪些元素。如果业务需要准确保存成员信息，就应该使用 Set；如果只关心不同元素的数量，可以使用 HyperLogLog。\n简单总结一下List 是有序且允许重复的结构，适合队列和栈；Set 是无序且自动去重的结构，适合交集、并集、差集和共同数据计算；Sorted Set 在 Set 的基础上增加了分数，适合排行榜和排序场景；HyperLogLog 适合对大量数据进行低内存的基数统计。</p>\n<h4 id=\"redis-消息与原子操作\">Redis 消息与原子操作</h4>\n<p>接下来继续学习Redis 的消息与原子操作，主要包括发布订阅、Stream、事务、Pipeline 和 Lua 脚本。这些功能主要用于消息传递、任务处理、批量操作以及保证多个命令按照整体逻辑执行。\nRedis 发布订阅功能由发布者、频道和订阅者组成。订阅者先订阅一个频道：</p>\n<pre><code class=\"language-redis\">SUBSCRIBE news\n</code></pre>\n<p>执行后，当前客户端会进入等待消息状态。此时需要打开另一个 PowerShell 窗口，进入 Redis 后执行：</p>\n<pre><code class=\"language-redis\">PUBLISH news &quot;test&quot;\n</code></pre>\n<p>订阅者窗口会收到消息。PUBLISH 的返回值表示当前有多少个订阅者收到了消息。发布订阅适合实现实时通知、聊天室消息、配置更新通知等功能。但是它不会保存历史消息，如果订阅者发布消息时没有在线，就无法收到之前的消息，因此不适合要求消息可靠保存的任务。\nStream 是 Redis 提供的消息流数据结构，适合保存消息并支持后续读取。可以使用 XADD 添加消息：</p>\n<pre><code class=\"language-redis\">XADD order:stream * user_id 1001 amount 2999\nXADD order:stream * user_id 1002 amount 1999\n</code></pre>\n<p>其中 * 表示让 Redis 自动生成消息 ID。查看 Stream 中的消息</p>\n<pre><code class=\"language-redis\">XRANGE order:stream - +\n</code></pre>\n<ul>\n<li>表示从最早的消息开始，+ 表示读取到最后一条消息。Stream 会保存消息内容，因此与发布订阅相比更加可靠，适合订单事件、日志记录和消息队列等场景。Stream 还支持消费者组，可以让多个消费者共同处理消息，适合实际项目中的异步任务处理。\nRedis 事务可以将多个命令放入一个事务中执行。使用 MULTI 开始事务，后续命令会先进入队列，使用 EXEC 后才会真正执行：</li>\n</ul>\n<pre><code class=\"language-redis\">MULTI\nSET account:1001:balance 1000\nINCR account:1001:balance\nGET account:1001:balance\nEXEC\n</code></pre>\n<p>在 MULTI 和 EXEC 之间执行的命令不会立即返回最终结果，而是先返回 QUEUED。执行 EXEC 后，Redis 会按照命令加入的顺序依次执行。使用 DISCARD 可以取消还没有执行的事务，需要注意，Redis 事务不等同于 MySQL 事务。Redis 事务中的命令一旦开始执行，通常不会因为其中一个命令执行失败而自动回滚。因此，使用事务时需要提前保证命令和参数正确。Redis 还支持使用 WATCH 实现乐观锁。例如先监视一个库存 Key：</p>\n<pre><code class=\"language-redis\">WATCH product:1001:stock\nGET product:1001:stock\n</code></pre>\n<p>如果其他客户端在当前事务执行前修改了这个 Key，事务可能执行失败。这样可以避免多个客户端同时修改同一个数据时产生覆盖问题。\nPipeline 的作用是一次向 Redis 发送多个命令，减少客户端和 Redis 之间的网络往返次数。例如程序需要执行很多命令时，可以将命令批量发送，Pipeline 主要解决的是网络效率问题，而不是事务问题。Pipeline 可以减少网络通信次数，但其中的命令不一定具备原子性；如果需要保证多个命令作为一个整体执行，应使用事务或 Lua 脚本。Lua 脚本可以将多个 Redis 命令放在一个脚本中执行，并且脚本执行期间不会被其他 Redis 命令插入。</p>\n<pre><code class=\"language-redis\">SET product:1001:stock 10\nEVAL &quot;local stock = tonumber(redis.call(&#39;GET&#39;, KEYS[1])); if stock and stock &gt; 0 then return redis.call(&#39;DECR&#39;, KEYS[1]); else return -1 end&quot; 1 product:1001:stock\n</code></pre>\n<p>这个脚本脚本表示只有库存大于 0 时才扣减库存，库存大于 0 时执行 DECR，库存不足时返回 -1。\nLua 脚本适合处理判断并修改这类必须连续完成的操作，例如库存扣减、限流、优惠券领取和分布式锁续期。相比先执行 GET 再执行 DECR，Lua 可以避免多个客户端之间的并发问题。</p>\n<h4 id=\"redis-数据可靠性与缓存\">Redis 数据可靠性与缓存</h4>\n<p>Redis 的数据主要保存在内存中，内存读写速度快，但服务重启或服务器故障可能导致数据丢失，因此 Redis 提供了持久化机制，将内存中的数据保存到磁盘中。RDB 是 Redis 默认支持的一种持久化方式，它会在某个时间点生成当前数据集的快照，保存为 RDB 文件。可以手动执行 SAVE 会直接在主进程中生成快照，执行期间可能阻塞其他请求，因此一般不建议在生产环境频繁使用。也可以使用 BGSAVE 会创建后台任务生成 RDB 文件，Redis 主线程可以继续处理客户端请求，更适合实际运行中的服务。RDB 的优点是文件 compact、恢复速度较快，适合备份和快速重启；缺点是它保存的是某个时间点的快照，如果两次快照之间 Redis 发生故障，最近一段时间的数据可能会丢失。因此 RDB 更适合对少量数据丢失可以接受的缓存和备份场景。\nAOF 是另一种持久化方式，它会记录 Redis 执行过的写命令。Redis 重启时，可以重新执行 AOF 文件中的命令来恢复数据。AOF 的特点是数据记录更加及时，通常比 RDB 更能减少数据丢失，但 AOF 文件可能比较大，恢复时也需要重新执行命令。AOF 支持不同的刷盘策略，常见的策略是每秒刷盘一次，在性能和数据安全之间取得平衡。实际使用中，RDB 更适合快照备份，AOF 更适合减少数据丢失，两者可以同时启用。\n除了持久化，Redis 还会通过过期时间管理缓存数据。例如：</p>\n<pre><code class=\"language-redis\">SET product:1001 &quot;A&quot; EX 60\nTTL product:1001\n</code></pre>\n<p>当 TTL 变为 0 后，Key 会被 Redis 删除。Redis 的过期删除并不一定在时间刚到时立即删除，而是结合被动删除和定期检查机制完成。当客户端访问一个已经过期的 Key 时，Redis 会发现它过期并将其删除；同时 Redis 也会定期检查部分设置了过期时间的 Key。\n如果 Redis 内存达到上限，还需要通过淘汰策略删除部分 Key。可以查看当前最大内存和淘汰策略：</p>\n<pre><code class=\"language-redis\">CONFIG GET maxmemory\nCONFIG GET maxmemory-policy\n</code></pre>\n<p>常见淘汰策略包括按照最近最少使用淘汰、按照访问频率淘汰、随机淘汰，以及只淘汰设置了过期时间的 Key。实际项目中，如果 Redis 主要用于缓存，通常会设置最大内存和合理的淘汰策略，避免 Redis 因内存不足无法继续写入。\n缓存穿透是指请求查询一个 Redis 和数据库中都不存在的数据。由于缓存中没有数据，每次请求都会访问数据库，大量无效请求可能造成数据库压力。常见解决办法是缓存空值：</p>\n<pre><code class=\"language-redis\">SET product:1 &quot;__NULL__&quot; EX 60\n</code></pre>\n<p>下次再查询 product:1 时，如果读取到 <strong>NULL</strong>，就可以直接判断数据不存在，而不必再次查询数据库。\n缓存击穿是指某一个访问量很高的热点 Key 在过期的瞬间，大量请求同时发现缓存不存在，然后同时访问数据库。这样会造成数据库瞬时压力。常见解决办法包括使用互斥锁，只允许一个请求查询数据库并重建缓存，其他请求等待；也可以给热点数据设置较长的过期时间，或者使用逻辑过期，让数据在物理上暂时不过期，由程序异步更新。\n缓存雪崩是指大量 Key 在同一时间集中失效，导致大量请求同时访问数据库。比如给大量商品缓存统一设置 300 秒过期时间，可能导致它们在相近时间一起失效。常见解决办法是给过期时间增加随机值。</p>\n<h3 id=\"资料来源\">资料来源</h3>\n<ul>\n<li><a href=\"https://redis.io/docs/latest/commands/redis-8-10-commands/\">Redis Commands（官方文档）</a></li>\n<li><a href=\"https://www.runoob.com/redis/redis-geo.html\">Redis GEO 命令说明</a></li>\n</ul>\n",
+    "headings": [
+      {
+        "depth": 3,
+        "slug": "redis缓存数据结构与可靠性",
+        "text": "Redis：缓存、数据结构与可靠性"
+      },
+      {
+        "depth": 4,
+        "slug": "redis-是什么",
+        "text": "Redis 是什么"
+      },
+      {
+        "depth": 4,
+        "slug": "基础数据stringhash-与缓存使用",
+        "text": "基础数据：String、Hash 与缓存使用"
+      },
+      {
+        "depth": 4,
+        "slug": "队列集合与排序",
+        "text": "队列、集合与排序"
+      },
+      {
+        "depth": 4,
+        "slug": "redis-消息与原子操作",
+        "text": "Redis 消息与原子操作"
+      },
+      {
+        "depth": 4,
+        "slug": "redis-数据可靠性与缓存",
+        "text": "Redis 数据可靠性与缓存"
+      },
+      {
+        "depth": 3,
+        "slug": "资料来源",
+        "text": "资料来源"
+      }
+    ]
+  },
+  {
+    "id": "2026-08-19",
+    "title": "8/19 MySQL：实操记录",
+    "description": "记录学习 MySQL 的实操和常用命令。",
+    "publishedAt": "2026-08-19",
+    "draft": false,
+    "html": "<h3 id=\"mysql实操\">MySQL实操</h3>\n<h4 id=\"创建数据库\">创建数据库</h4>\n<p>建立一个简单的商城数据库进行练习。首先在装好环境的情况下登录到MySQL：</p>\n<pre><code class=\"language-pwsh\">mysql -u root -p\n</code></pre>\n<p>创建一个名为 shop_demo 的数据库：</p>\n<pre><code class=\"language-SQL\">CREATE DATABASE IF NOT EXISTS shop_demo\nCHARACTER SET utf8mb4\nCOLLATE utf8mb4_unicode_ci;\n</code></pre>\n<p>这里使用 utf8mb4，可以较好地支持中文和特殊字符。\n可以使用以下和三个指令选择数据库和查看当前使用的数据库和删除数据库。</p>\n<pre><code class=\"language-SQL\">USE shop_demo;\nSELECT DATABASE();\nDROP DATABASE shop_demo;（删除数据库会删除其中的所有表和数据）\n</code></pre>\n<p>接下来进行数据表的创建：</p>\n<pre><code class=\"language-SQL\">CREATE TABLE users (\n    id INT PRIMARY KEY AUTO_INCREMENT,\n    username VARCHAR(50) NOT NULL UNIQUE,\n    email VARCHAR(100) UNIQUE,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n);\n</code></pre>\n<p>解析：\nid: 用户 id，整数类型，作为主键，自增长。\nusername: 用户名，变长字符串，不允许为空，不能重复。\nemail: 用户邮箱，变长字符串，不能重复。\ncreated_at: 用户注册时间字段，日期和时间类型，如果插入数据时不指定时间，就自动使用当前时间。</p>\n<h4 id=\"创建数据表\">创建数据表</h4>\n<p>接下来创建另外几个商品表、订单表、订单明显表：</p>\n<pre><code class=\"language-SQL\">CREATE TABLE products (\n    id INT PRIMARY KEY AUTO_INCREMENT,\n    product_name VARCHAR(100) NOT NULL,\n    price DECIMAL(10,2) NOT NULL,\n    stock INT NOT NULL DEFAULT 0,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n);\n\nCREATE TABLE orders (\n    id INT PRIMARY KEY AUTO_INCREMENT,\n    user_id INT NOT NULL,\n    total_amount DECIMAL(10,2) NOT NULL DEFAULT 0,\n    status VARCHAR(20) NOT NULL DEFAULT &#39;待支付&#39;,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n\n    FOREIGN KEY (user_id) REFERENCES users(id)\n);\nCREATE TABLE order_items (\n    id INT PRIMARY KEY AUTO_INCREMENT,\n    order_id INT NOT NULL,\n    product_id INT NOT NULL,\n    quantity INT NOT NULL,\n    price DECIMAL(10,2) NOT NULL,\n\n    FOREIGN KEY (order_id) REFERENCES orders(id),\n    FOREIGN KEY (product_id) REFERENCES products(id)\n);\n</code></pre>\n<p>其中需要特别注意的是order_items 表中的 order_id，必须对应 orders 表中已经存在的 id。\n创建完之后可以通过命令来查看数据库的表和表的结构：</p>\n<pre><code class=\"language-SQL\">SHOW TABLES;\nDESC users;\n</code></pre>\n<p><figure><img src=\"image-1.png\" alt=\"alt text\" title=\"表和表结构\"><figcaption>表和表结构</figcaption></figure></p>\n<pre><code class=\"language-SQL\">DROP TABLE users;\nDROP TABLE [IF EXISTS] users;\n</code></pre>\n<p>删除数据表指令，IF EXISTS 是一个可选的子句，表示如果表存在才执行删除操作，避免因为表不存在而引发错误。</p>\n<h4 id=\"插入测试数据\">插入测试数据</h4>\n<pre><code class=\"language-SQL\">INSERT INTO users (username, email)\nVALUES\n(&#39;张三&#39;, &#39;zhangsan@example.com&#39;),\n(&#39;李四&#39;, &#39;lisi@example.com&#39;),\n(&#39;王五&#39;, &#39;wangwu@example.com&#39;);\n\nINSERT INTO products (product_name, price, stock)\nVALUES\n(&#39;机械键盘&#39;, 299.00, 20),\n(&#39;无线鼠标&#39;, 99.00, 50),\n(&#39;显示器&#39;, 1299.00, 10);\n</code></pre>\n<p>分别是插入用户和插入商品，插入数据后，可以通过以下语句查看：</p>\n<pre><code class=\"language-SQL\">SELECT * FROM users;\nSELECT * FROM products;\n</code></pre>\n<h4 id=\"基本查询\">基本查询</h4>\n<pre><code class=\"language-SQL\">SELECT *\nFROM products\nWHERE price &gt; 100;\n\nSELECT *\nFROM products\nWHERE price BETWEEN 100 AND 1000;\n\nSELECT *\nFROM products\nWHERE product_name LIKE &#39;%鼠标%&#39;;\n\nSELECT *\nFROM products\nORDER BY price DESC;\n\nSELECT COUNT(*) AS product_count\nFROM products;\n</code></pre>\n<p>这几个查询分别表示：查询价格大于 100 元的商品、查询价格在 100 到 1000 元之间的商品、查询商品名称中包含“鼠标”的商品、按照价格从高到低排序、统计商品数量。\n其中各子句的含义：</p>\n<table>\n<thead>\n<tr>\n<th align=\"left\">关键字</th>\n<th align=\"center\">作用</th>\n</tr>\n</thead>\n<tbody><tr>\n<td align=\"left\"><code>FROM</code></td>\n<td align=\"center\">指定数据来源表</td>\n</tr>\n<tr>\n<td align=\"left\"><code>WHERE</code></td>\n<td align=\"center\">筛选符合条件的数据</td>\n</tr>\n<tr>\n<td align=\"left\"><code>BETWEEN</code></td>\n<td align=\"center\">查询某个范围内的数据</td>\n</tr>\n<tr>\n<td align=\"left\"><code>LIKE</code></td>\n<td align=\"center\">进行模糊查询</td>\n</tr>\n<tr>\n<td align=\"left\"><code>ORDER BY</code></td>\n<td align=\"center\">对查询结果进行排序</td>\n</tr>\n<tr>\n<td align=\"left\"><code>COUNT(*)</code></td>\n<td align=\"center\">统计数据行数</td>\n</tr>\n<tr>\n<td align=\"left\"><code>AS</code></td>\n<td align=\"center\">给字段或查询结果设置别名</td>\n</tr>\n</tbody></table>\n<h4 id=\"修改和删除数据\">修改和删除数据</h4>\n<pre><code class=\"language-SQL\">UPDATE products\nSET price = 259.00\nWHERE product_name = &#39;机械键盘&#39;;\n\nUPDATE products\nSET stock = stock + 10\nWHERE id = 1;\n\nDELETE FROM users\nWHERE username = &#39;王五&#39;;\n</code></pre>\n<p>上面分别表示了修改机械键盘的价格、增加商品库存、删除某个用户。需要特别注意的是 UPDATE 和 DELETE 是一个可选的子句，用于指定删除的行。如果省略 WHERE 子句，将更新/删除表中的所有行。</p>\n<h4 id=\"多表查询\">多表查询</h4>\n<p>要想将这几个表链接在一起首先插入一条订单和订单明细：</p>\n<pre><code class=\"language-SQL\">INSERT INTO orders (user_id, total_amount, status)\nVALUES (1, 299.00, &#39;待支付&#39;);\n\nINSERT INTO order_items\n(order_id, product_id, quantity, price)\nVALUES\n(1, 1, 1, 259.00);\n</code></pre>\n<p>然后执行:</p>\n<pre><code class=\"language-SQL\">SELECT\n    u.username AS `用户名`,\n    p.product_name AS `商品名称`,\n    oi.quantity AS `购买数量`\nFROM orders AS o\nJOIN users AS u\n    ON o.user_id = u.id\nJOIN order_items AS oi\n    ON o.id = oi.order_id\nJOIN products AS p\n    ON oi.product_id = p.id;\n</code></pre>\n<p>意思是查询用户名、商品名称和购买数量。分别将四张表链接在了一起。此外如果将 JOIN改成LEFT JOIN（左连接）将会变成获取左表所有记录，即使右表没有对应匹配的记录。同理RIGHT JOIN（右连接）与 LEFT JOIN 相反，用于获取右表所有记录，即使左表没有对应匹配的记录。\n<img src=\"image-2.png\" alt=\"alt text\"></p>\n<h4 id=\"事务\">事务</h4>\n<p>事务可以理解为一组必须“全部成功或全部失败”的 SQL 操作。事务是必须满足4个条件（ACID）：：原子性（Atomicity，或称不可分割性）、一致性（Consistency）、隔离性（Isolation，又称独立性）、持久性（Durability）。\n原子性：一个事务（transaction）中的所有操作，要么全部完成，要么全部不完成，不会结束在中间某个环节。事务在执行过程中发生错误，会被回滚（Rollback）到事务开始前的状态，就像这个事务从来没有执行过一样。\n一致性：在事务开始之前和事务结束以后，数据库的完整性没有被破坏。这表示写入的资料必须完全符合所有的预设规则，这包含资料的精确度、串联性以及后续数据库可以自发性地完成预定的工作。\n隔离性：数据库允许多个并发事务同时对其数据进行读写和修改的能力，隔离性可以防止多个事务并发执行时由于交叉执行而导致数据的不一致。事务隔离分为不同级别，包括读未提交（Read uncommitted）、读提交（read committed）、可重复读（repeatable read）和串行化（Serializable）。\n持久性：事务处理结束后，对数据的修改就是永久的，即便系统故障也不会丢失。</p>\n<p>例如用户下单时，通常需要完成以下操作：</p>\n<ol>\n<li>创建订单</li>\n<li>添加订单明细</li>\n<li>扣减商品库存</li>\n<li>修改订单状态\n如果库存扣减失败，前面创建的订单也应该撤销，这时就需要使用事务：</li>\n</ol>\n<pre><code class=\"language-SQL\">START TRANSACTION;\nINSERT INTO orders\n(user_id, total_amount, status)\nVALUES\n(1, 497.00, &#39;已支付&#39;);\n\nSET @order_id = LAST_INSERT_ID();\n\nINSERT INTO order_items\n(order_id, product_id, quantity, price)\nVALUES\n(@order_id, 1, 1, 259.00),\n(@order_id, 2, 2, 99.00);\n\nUPDATE products\nSET stock = stock - 1\nWHERE id = 1\n  AND stock &gt;= 1;\n\nUPDATE products\nSET stock = stock - 2\nWHERE id = 2\n  AND stock &gt;= 2;\n\nCOMMIT;\n</code></pre>\n<p>其中最后的COMMIT表示保存所有的操作，如果发现库存不足，或者某一步执行失败，不要执行 COMMIT，而是执行：ROLLBACK;这样本次事务中的操作都会撤销。\n事务中常用的命令：</p>\n<pre><code class=\"language-SQL\">BEGIN;                 -- 开始事务\nCOMMIT;                -- 提交事务\nROLLBACK;              -- 回滚事务\nSAVEPOINT point1;      -- 设置保存点\nROLLBACK TO point1;    -- 回滚到保存点\n</code></pre>\n<h4 id=\"修改表结构\">修改表结构</h4>\n<p>当我们需要修改数据表名或者修改数据表字段时，就需要使用到 MySQL ALTER 命令。MySQL 的 ALTER 命令用于修改数据库、表和索引等对象的结构。ALTER 命令允许你添加、修改或删除数据库对象，并且可以用于更改表的列定义、添加约束、创建和删除索引等操作。</p>\n<pre><code class=\"language-SQL\">ALTER TABLE users\nADD phone VARCHAR(20);\n\nALTER TABLE users\nMODIFY phone VARCHAR(30);\n\nALTER TABLE users\nDROP COLUMN phone;\n\nALTER TABLE users\nRENAME TO customers;\n</code></pre>\n<p>给用户表添加手机号，修改字段类型，删除字段，修改表明等操作，还可以修改主键。</p>\n<h4 id=\"索引\">索引</h4>\n<p>MySQL 索引是一种数据结构，用于加快数据库查询的速度和性能。MySQL 索引的建立对于 MySQL 的高效运行是很重要的，索引可以大大提高 MySQL 的检索速度。创建索引时，你需要确保该索引是应用在 SQL 查询语句的条件(一般作为 WHERE 子句的条件)。实际上，索引也是一张表，该表保存了主键与索引字段，并指向实体表的记录。索引虽然能够提高查询性能，但也需要注意以下几点：索引需要占用额外的存储空间，过多或不合理的索引可能会导致性能下降，因此需要谨慎选择和规划索引，对表进行插入、更新和删除操作时，索引需要维护，可能会影响性能。\n使用 CREATE INDEX 语句可以创建普通索引。普通索引是最常见的索引类型，用于加速对表中数据的查询。\nCREATE INDEX 的语法：</p>\n<pre><code class=\"language-SQL\">CREATE INDEX idx_username\nON users(username);\n\nSHOW INDEX FROM users; \n\nDROP INDEX idx_username\nON users;\n</code></pre>\n<p>分别是给 username 创建索引，查看索引，和删除索引。\n还可以再创建表的时候使用 INDEX 指令直接指定索引，也可以使用ALTER 命令添加和删除索引。</p>\n<h4 id=\"临时数据复制表\">临时数据、复制表</h4>\n<p>MySQL 临时表在我们需要保存一些临时数据时是非常有用的。临时表只在当前连接可见，当关闭连接时，MySQL 会自动删除表并释放所有空间。 </p>\n<pre><code class=\"language-SQL\">CREATE TEMPORARY TABLE temp_products (\n    id INT,\n    product_name VARCHAR(100),\n    price DECIMAL(10,2)\n);\n\nINSERT INTO temp_products\nVALUES\n(1, &#39;机械键盘&#39;, 259.00),\n(2, &#39;无线鼠标&#39;, 99.00);\n\nSELECT *\nFROM temp_products;\n</code></pre>\n<p>如果我们需要完全的复制 MySQL 的数据表，包括表的结构，索引，默认值等。使用 SHOW CREATE TABLE 命令获取创建数据表(CREATE TABLE) 语句，该语句包含了原数据表的结构，索引等。</p>\n<pre><code class=\"language-SQL\">CREATE TABLE products_backup AS\nSELECT *\nFROM products;\n\nINSERT INTO products_backup\nSELECT *\nFROM products;\n</code></pre>\n<p>复制表结构和数据，然后再复制数据。</p>\n<h4 id=\"自动编号和重复数据处理\">自动编号和重复数据处理</h4>\n<p>MySQL 中常用 AUTO_INCREMENT 实现自动编号：</p>\n<pre><code class=\"language-SQL\">CREATE TABLE test_users (\n    id INT PRIMARY KEY AUTO_INCREMENT,\n    username VARCHAR(50)\n);\n</code></pre>\n<p>插入数据时不需要手动设置 id：</p>\n<pre><code class=\"language-SQL\">INSERT INTO test_users (username)\nVALUES\n(&#39;张三&#39;),\n(&#39;李四&#39;);\n</code></pre>\n<p>有些 MySQL 数据表中可能存在重复的记录，有些情况我们允许重复数据的存在，但有时候我们也需要删除这些重复的数据。\n查询不重复的用户名：</p>\n<pre><code class=\"language-SQL\">SELECT DISTINCT username\nFROM users;\n</code></pre>\n<p>DISTINCT 可以去除查询结果中的重复数据。\n如果想查询重复邮箱：</p>\n<pre><code class=\"language-SQL\">SELECT\n    email,\n    COUNT(*) AS email_count\nFROM users\nGROUP BY email\nHAVING email_count &gt; 1;\n</code></pre>\n<p>也可以在在表结构层面，也可以使用 UNIQUE 防止重复。像是之前创建用户表时候，email VARCHAR(100) UNIQUE,表示不能重复。</p>\n<h4 id=\"数据库备份和安全\">数据库备份和安全</h4>\n<p>数据库导出在操作系统终端中执行：</p>\n<pre><code>mysqldump -u root -p shop_demo &gt; shop_demo.sql\n</code></pre>\n<p>输入秘密后就会把 shop_demo 数据库导出成一个 SQL 文件。\n这样就可以把备份文件中的数据恢复到新数据库中。数据库备份很重要，可以用于： 防止数据丢失、更换电脑时迁移数据、搭建测试环境、恢复误删除的数据。\nSQL 注入是指用户输入的内容影响了原本的 SQL 结构。实际开发中，不能直接拼接用户输入，例如：</p>\n<pre><code>SELECT * FROM users WHERE username = &#39;用户输入&#39;;\n</code></pre>\n<p>应该使用参数化查询或预处理语句：</p>\n<pre><code class=\"language-SQL\">SELECT *\nFROM users\nWHERE username = ?;\n</code></pre>\n<p>同时还应该：不让应用程序使用 root 、用户只授予应用程序必要的权限、验证用户输入、不直接向用户显示数据库错误信息</p>\n<h4 id=\"函数和运算符\">函数和运算符</h4>\n<p>常用函数\n统计商品数量：</p>\n<pre><code class=\"language-SQL\">SELECT COUNT(*) AS 商品数量\nFROM products;\n</code></pre>\n<p>查询平均价格：</p>\n<pre><code class=\"language-SQL\">SELECT AVG(price) AS 平均价格\nFROM products;\n</code></pre>\n<p>查询最高价和最低价：</p>\n<pre><code class=\"language-SQL\">SELECT\n    MAX(price) AS 最高价格,\n    MIN(price) AS 最低价格\nFROM products;\n</code></pre>\n<p>处理字符串：</p>\n<pre><code class=\"language-SQL\">SELECT CONCAT(username, &#39;-&#39;, email)\nFROM users;\n</code></pre>\n<p>获取当前时间：</p>\n<pre><code class=\"language-SQL\">SELECT NOW();\n</code></pre>\n<p>常用运算符\n查询价格大于 100 元并且有库存的商品：</p>\n<pre><code class=\"language-SQL\">SELECT *\nFROM products\nWHERE price &gt; 100\n  AND stock &gt; 0;\n</code></pre>\n<p>查询价格范围：</p>\n<pre><code class=\"language-SQL\">SELECT *\nFROM products\nWHERE price BETWEEN 100 AND 1000;\n</code></pre>\n<p>查询指定商品：</p>\n<pre><code class=\"language-SQL\">SELECT *\nFROM products\nWHERE product_name IN (&#39;机械键盘&#39;, &#39;无线鼠标&#39;);\n</code></pre>\n<p>这些运算法可以组合起来使用。</p>\n<h3 id=\"参考资料\">参考资料</h3>\n<ul>\n<li><a href=\"https://dev.mysql.com/doc/refman/8.4/en/what-is-mysql.html\">MySQL 教程 | 菜鸟教程</a></li>\n</ul>\n",
+    "headings": [
+      {
+        "depth": 3,
+        "slug": "mysql实操",
+        "text": "MySQL实操"
+      },
+      {
+        "depth": 4,
+        "slug": "创建数据库",
+        "text": "创建数据库"
+      },
+      {
+        "depth": 4,
+        "slug": "创建数据表",
+        "text": "创建数据表"
+      },
+      {
+        "depth": 4,
+        "slug": "插入测试数据",
+        "text": "插入测试数据"
+      },
+      {
+        "depth": 4,
+        "slug": "基本查询",
+        "text": "基本查询"
+      },
+      {
+        "depth": 4,
+        "slug": "修改和删除数据",
+        "text": "修改和删除数据"
+      },
+      {
+        "depth": 4,
+        "slug": "多表查询",
+        "text": "多表查询"
+      },
+      {
+        "depth": 4,
+        "slug": "事务",
+        "text": "事务"
+      },
+      {
+        "depth": 4,
+        "slug": "修改表结构",
+        "text": "修改表结构"
+      },
+      {
+        "depth": 4,
+        "slug": "索引",
+        "text": "索引"
+      },
+      {
+        "depth": 4,
+        "slug": "临时数据复制表",
+        "text": "临时数据、复制表"
+      },
+      {
+        "depth": 4,
+        "slug": "自动编号和重复数据处理",
+        "text": "自动编号和重复数据处理"
+      },
+      {
+        "depth": 4,
+        "slug": "数据库备份和安全",
+        "text": "数据库备份和安全"
+      },
+      {
+        "depth": 4,
+        "slug": "函数和运算符",
+        "text": "函数和运算符"
+      },
+      {
+        "depth": 3,
+        "slug": "参考资料",
+        "text": "参考资料"
+      }
+    ]
+  },
+  {
     "id": "2026-08-18",
     "title": "8/18–19 MySQL：学习记录与常见问题",
     "description": "记录学习 MySQL 的数据页、索引、缓存、事务日志，以及慢查询、并发和分页。",

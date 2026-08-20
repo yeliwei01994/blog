@@ -18,7 +18,6 @@ describe('static React routes', () => {
     expect(screen.getByRole('main')).toHaveTextContent('记录学习、工作与项目实践');
     expect(document.querySelectorAll('main')).toHaveLength(1);
   });
-
   it('renders the diary index', () => {
     renderAt('/diary/');
 
