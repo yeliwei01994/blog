@@ -3,12 +3,387 @@ import type { DiaryArticle } from '../features/diary/diary-types';
 
 export const diaryArticles: DiaryArticle[] = [
   {
+    "id": "2026-08-22-video-platform-upgrade",
+    "title": "Docker、Nginx、Redis 与 MySQL：视频事件检索平台升级思路",
+    "description": "把这周对 Docker、Nginx、Redis 和 MySQL 的学习，整理成视频事件检索平台的升级思路。",
+    "publishedAt": "2026-08-22",
+    "draft": false,
+    "html": "<h3 id=\"本周总结\">本周总结</h3>\n<p>这周主要在补 Docker、Nginx、Redis 和 MySQL。17 号先看的 Nginx，刚开始其实还是从“浏览器访问一个网页，到底是谁把网页返回回来”这个问题开始的，后面才慢慢看到 HTTP 服务、反向代理、负载均衡和并发这些内容。18、19 号看 MySQL，内容比较多，从数据页、B+ 树和 Buffer Pool，一直看到事务、Undo Log、Redo Log、Binlog，期间也记了一些慢查询、锁和分页的问题。20 号看 Redis，主要是缓存、数据结构、Stream、发布订阅，还有缓存失效这些问题。21 号看 Docker，镜像、容器、Dockerfile、网络、数据卷和 Compose 基本都过了一遍。</p>\n<p>以前看这些东西，很多时候是看完一个算一个，知道一些命令和概念就过去了。这次我一直在拿自己的项目对照。Nginx 那篇里，我就在想前端和 API 为什么不应该直接互相暴露；MySQL 看到索引和事务时，我会想到以后事件列表怎么查、人工复核时怎么同时改几张表；Redis 看到 Stream 时，就会想到视频处理不能让一个接口一直等着；Docker 看到网络和数据卷时，又会想到这些服务启动以后怎么互相找到，MySQL 的数据怎么保留下来。</p>\n<p>我以前容易把学习变成记东西：Nginx 记 <code>location</code>，Redis 记 <code>SET</code>、<code>GET</code>，Docker 记 <code>pull</code>、<code>run</code> 和 <code>exec</code>。这些命令当然要会，但只记命令的话，过几天就容易忘，也不知道实际该用在什么地方。放到这个项目里以后，问题就具体了：视频处理要花很长时间，接口是不是不应该一直等？任务进度应该放在哪里？事件结果放在哪里？容器重新创建以后数据库还在不在？这些问题反而让我开始知道前面那些概念到底是为了解决什么。</p>\n<p>现在我大概能把这条流程想明白了。用户从前端上传视频，请求先经过 Nginx，再到 API。API 创建一个任务以后就返回，不负责一直处理完整个视频，后面的抽帧、检测和事件生成交给 Worker。Worker 处理的时候，把进度临时放到 Redis；任务最后成功还是失败、生成了哪些事件，再写到 MySQL；视频和截图则放到文件存储。虽然这些现在还只是升级计划，并不是项目已经完成的功能，但至少每一部分应该放在哪里，已经没有之前那么模糊了。</p>\n<p>把这些东西放回视频事件检索项目以后，我现在比较认可的做法就是先把任务和服务分开。用户上传视频以后，API 只创建任务，把任务放到 Redis 里，Worker 再去做抽帧、检测、跟踪和生成事件。处理过程中的进度可以放 Redis，任务最后是什么状态、产生了哪些事件、证据在哪里、使用了哪个模型版本，这些还是要放 MySQL。Nginx 负责让前端、API 和媒体文件从一个入口访问，Docker Compose 负责先把这些服务在本地跑起来。</p>\n<p>视频分析这里最明显的问题就是耗时。上传一个视频以后，抽帧、检测、跟踪和大模型分析都不是马上能结束的。如果 API 一直等到视频处理完才返回，用户要等很久，失败以后也不好重新处理。所以这部分应该拆开，API 只负责接收上传和创建任务，Worker 负责后面的处理。这个想法其实就是从 Redis 的队列和 Docker 里服务分工这些内容里慢慢联系出来的。</p>\n<p>Redis Stream 在这里就是把任务先放下来，交给后面的 Worker 处理。前端拿到 <code>job_id</code> 后可以去看进度，Worker 失败以后也有机会重试。不过任务放进队列并不代表问题就解决了，还要考虑同一个任务被处理两次怎么办，Worker 处理到一半退出怎么办，用户取消任务以后 Worker 要不要继续，以及 Redis 暂时连不上时 API 应该怎么返回。这些问题我现在还没有全部做完，但至少已经知道后面不能漏掉。</p>\n<p>这周看 MySQL 和 Redis 时，我对两者怎么分工也更清楚了。任务进度、缓存结果和去重标记变化很快，放 Redis 比较合适；但视频任务最后成功还是失败、事件什么时候发生、对应哪张截图、人工有没有确认，这些以后都要查，不能只放 Redis。前端查看任务时可以先读 Redis 的进度，但 Redis 重启以后，系统还是要能从 MySQL 找到任务结果。简单说，Redis 适合放“现在正在发生的事情”，MySQL 适合放“以后还要查的结果”。</p>\n<p>视频文件和业务数据也不能混在一起。数据库里保存文件地址、哈希、大小、时长和关联关系就够了，真正的视频、截图和短片段放到 volume、MinIO 或其他对象存储里。规则和 Prompt 以后肯定会改，所以历史事件还要记下当时用的版本。Worker 如果重试，同一个视频也不能一直生成重复事件，这部分需要用任务 ID 和事件指纹做去重。以前我可能会先把这些内容都塞进一个地方，学完 MySQL、Redis 和 Docker 以后，才发现这样做后面会很难维护。</p>\n<p>目前这套升级还没有真正全部做出来，YOLO、FFmpeg、Worker 和大模型接口都只是计划中的部分。这周先把它们之间的关系想清楚了：哪些事情由 API 做，哪些事情放到后台处理，哪些数据必须保存，哪些地方可以先用 Mock 顶上。比起一开始就做页面，我觉得先把这些问题想明白，后面接真实功能时少返工一些。</p>\n<p>升级计划里还有实时 RTSP、自然语言检索、向量检索和大模型报告，这些我都想做，但现在还不能一起上。如果任务状态、事件数据和文件访问都没跑顺，就直接接模型，出了问题也不知道是哪里的问题。所以我准备先用 Mock Detector 和 Mock Analyzer 把创建任务、投递任务、消费任务、保存事件和查询事件走通，再一点点换成 FFmpeg、真实检测模型和大模型分析。</p>\n<p>我现在的想法比较简单：先把服务跑起来，再看哪里真的需要扩展，不要一开始就把架构想得太复杂。前面的几篇日记已经分别写过基础概念，下面就只记录它们放进项目以后各自做什么。</p>\n<h2 id=\"四项技术在项目中的分工\">四项技术在项目中的分工</h2>\n<h3 id=\"nginx统一访问入口\">Nginx：统一访问入口</h3>\n<p>Nginx 放在浏览器和内部服务之间，对外提供一个统一的访问地址：</p>\n<pre><code class=\"language-text\">浏览器\n  ↓\nNginx\n  ├── /       → React 前端\n  ├── /api/   → Rust API\n  └── /media/ → 图片、截图和视频片段\n</code></pre>\n<p>这样浏览器不需要知道 API、Worker、文件存储分别运行在哪个端口。Nginx 负责静态资源、API 反向代理和媒体访问，后续还可以继续增加上传大小、请求超时、访问日志和负载均衡等配置。</p>\n<p>对于视频项目，<code>/media/</code> 需要单独考虑权限和访问方式。开发阶段可以访问本地 volume，后续使用 MinIO 或兼容 S3 的对象存储，并通过受控路径或短期签名 URL 返回资源。</p>\n<h3 id=\"mysql保存核心业务数据\">MySQL：保存核心业务数据</h3>\n<p>MySQL 负责保存需要长期存在、能够查询和审计的数据。视频和图片本身不直接放进 MySQL，但视频任务、事件和处理结果需要持久化保存。</p>\n<p>升级计划中，MySQL 可以先设计这些表：</p>\n<table>\n<thead>\n<tr>\n<th>表</th>\n<th>作用</th>\n</tr>\n</thead>\n<tbody><tr>\n<td><code>video_jobs</code></td>\n<td>视频来源、状态、进度和错误信息</td>\n</tr>\n<tr>\n<td><code>events</code></td>\n<td>事件类型、时间范围、严重程度和置信度</td>\n</tr>\n<tr>\n<td><code>event_rules</code></td>\n<td>区域、停留时长和冷却规则</td>\n</tr>\n<tr>\n<td><code>prompt_versions</code></td>\n<td>Prompt 版本和启用状态</td>\n</tr>\n<tr>\n<td><code>model_versions</code></td>\n<td>检测模型和分析模型版本</td>\n</tr>\n<tr>\n<td><code>event_reviews</code></td>\n<td>人工确认、忽略和修改记录</td>\n</tr>\n</tbody></table>\n<p>事件检索主要会使用事件类型、严重程度、状态和时间范围，因此这些字段需要根据真实查询建立索引。完整检测结果和大模型输出可以先放在 JSON 字段里，等查询需求稳定后，再决定是否拆成独立表。</p>\n<p>这周学习事务和日志后，我也意识到，任务状态、事件生成和人工复核之间需要保持一致。例如事件确认时，更新 <code>events</code> 和写入 <code>event_reviews</code> 应该放在同一个事务里，不能只完成一半。</p>\n<h3 id=\"redis处理异步任务和短期状态\">Redis：处理异步任务和短期状态</h3>\n<p>Redis 在这个项目中不是 MySQL 的替代品，而是负责变化快、访问频繁或适合异步处理的内容：</p>\n<pre><code class=\"language-text\">vision:queue:video-analysis       视频分析任务\nvision:job:{id}:progress           任务实时进度\nvision:event-search:{query_hash}  高频检索缓存\nvision:dedup:{job_id}:{fingerprint} 事件去重标记\n</code></pre>\n<p>视频分析可能需要 FFmpeg、目标检测、跟踪和大模型分析，如果让 API 一直等待，接口会被长任务占用。因此 API 只负责创建任务，Worker 从 Redis Stream 中消费任务：</p>\n<pre><code class=\"language-text\">用户上传视频\n  ↓\nRust API 创建 video_job\n  ↓\nRedis Stream 投递分析任务\n  ↓\nWorker 异步处理\n  ↓\nRedis 更新进度\n  ↓\nMySQL 保存最终任务和事件\n</code></pre>\n<p>这也是我这周学习 Redis Stream 后对项目最直接的应用。发布订阅适合实时通知，但不保存历史消息；Stream 更适合需要消费记录、失败重试和消费者组的任务队列。</p>\n<p>Redis 只保存进度、队列和缓存，最终业务数据仍然写入 MySQL。Worker 还需要具备幂等性：同一个任务重复执行时，不能无限生成重复事件。可以根据任务 ID、事件类型、时间范围和目标轨迹生成事件指纹，用于去重。</p>\n<h3 id=\"docker统一多服务环境\">Docker：统一多服务环境</h3>\n<p>Docker 负责把应用和运行环境封装起来，Compose 负责在本地或测试环境统一启动多个服务。项目升级后，第一版服务可以包括：</p>\n<pre><code class=\"language-text\">nginx     统一入口\nfrontend  React 前端\napi       Rust API\nworker    视频分析任务\nmysql     任务和事件数据库\nredis     队列、进度和缓存\nminio     视频和图片文件存储\n</code></pre>\n<p>服务之间通过 Docker 网络使用服务名通信，例如 API 连接 <code>mysql:3306</code> 和 <code>redis:6379</code>，内部服务不需要暴露到公网。MySQL 必须使用数据卷保存数据，视频文件也应该使用独立的文件存储或 volume。</p>\n<p>Compose 适合目前的开发和测试阶段。现阶段没有必要直接引入 Kubernetes；等真正遇到多机调度、自动扩缩容和高可用需求时，再单独评估 Swarm 或 Kubernetes。</p>\n<h2 id=\"四项技术如何串成一条任务链路\">四项技术如何串成一条任务链路</h2>\n<p>结合升级计划，系统的主要流程可以整理为：</p>\n<pre><code class=\"language-text\">浏览器\n  ↓\nNginx\n  ↓\nRust API\n  ├── MySQL：创建和查询任务\n  └── Redis Stream：投递异步任务\n          ↓\n      Rust Worker\n       ├── FFmpeg 抽帧与切片\n       ├── Detector 目标检测\n       ├── Tracker 目标跟踪\n       ├── Event Rule Engine 生成事件\n       └── Vision Analyzer 分析和摘要\n          ↓\n      MySQL + 文件存储\n</code></pre>\n<p>一次视频任务可以分成几个阶段：</p>\n<ol>\n<li>用户上传视频，API 检查类型和大小，保存文件并创建 <code>video_jobs</code>。</li>\n<li>API 把任务写入 Redis Stream，立即返回 <code>job_id</code>，不让 HTTP 请求一直等待。</li>\n<li>Worker 读取视频元数据，完成抽帧、检测、跟踪和规则判断。</li>\n<li>系统保存事件的时间范围、置信度、关键帧、短视频片段和版本信息。</li>\n<li>MySQL 保存最终任务和事件，Redis 保存短期进度，前端展示处理状态。</li>\n<li>用户按事件类型、时间范围、严重程度和关键词检索，并进行人工复核。</li>\n</ol>\n<p>第一阶段应该由规则引擎决定是否产生事件，大模型只负责解释、摘要和建议。这样规则可以被测试和复现，也不会让大模型直接决定高风险动作。大模型不可用时，基础事件仍然可以生成，并标记为 <code>analysis_pending</code> 或 <code>fallback</code>。</p>\n<h2 id=\"升级时需要注意的边界\">升级时需要注意的边界</h2>\n<p>这次学习也让我提前看到了一些不能忽略的问题：</p>\n<ul>\n<li>MySQL 是核心数据来源，Redis 故障不能导致已经保存的事件丢失。</li>\n<li>MySQL 数据必须使用 volume，容器删除和数据删除要明确区分。</li>\n<li>Worker 需要支持重试、取消和幂等，避免重复生成事件。</li>\n<li>视频上传需要限制类型、大小和处理目录，防止路径穿越和磁盘被占满。</li>\n<li>视频和图片二进制不放进 MySQL 或 Redis。</li>\n<li>检测模型、规则和 Prompt 都要保存版本，保证历史事件可以审计。</li>\n<li>低置信度事件进入人工复核，大模型不能直接控制生产设备。</li>\n<li>自然语言检索只能转换成结构化过滤条件，不能让模型直接拼接 SQL。</li>\n</ul>\n<h2 id=\"下一步的开发计划\">下一步的开发计划</h2>\n<p>我准备先完成最小闭环，再逐步增加真实能力。</p>\n<h3 id=\"第一阶段工程骨架\">第一阶段：工程骨架</h3>\n<ul>\n<li>初始化 Rust workspace、React 工程和 Compose。</li>\n<li>完成 Nginx、API、MySQL 和 Redis 的连接。</li>\n<li>建立 <code>VideoJob</code>、<code>Event</code>、<code>Detection</code> 和 <code>AnalysisResult</code> 类型。</li>\n<li>使用 Mock Detector 和 Mock Analyzer。</li>\n<li>跑通“创建任务 → 生成模拟事件 → 检索 → 查看详情”。</li>\n</ul>\n<h3 id=\"第二阶段视频处理链路\">第二阶段：视频处理链路</h3>\n<ul>\n<li>接入视频上传和文件存储。</li>\n<li>使用 FFmpeg 获取元数据、抽帧和切片。</li>\n<li>使用 Redis Stream 驱动 Worker。</li>\n<li>把任务状态、错误和进度保存下来。</li>\n</ul>\n<h3 id=\"第三阶段规则和证据\">第三阶段：规则和证据</h3>\n<ul>\n<li>实现区域进入、停留、越界和冷却规则。</li>\n<li>生成关键帧和事件短视频片段。</li>\n<li>完成失败重试、事件去重和 MySQL 检索。</li>\n</ul>\n<h3 id=\"第四阶段大模型和检索优化\">第四阶段：大模型和检索优化</h3>\n<ul>\n<li>接入统一的 <code>VisionAnalyzer</code> 接口。</li>\n<li>做 Prompt 版本化和结构化输出校验。</li>\n<li>增加人工复核、事件统计和自然语言检索。</li>\n<li>根据实际数据再评估向量检索和实时 RTSP。</li>\n</ul>\n<h2 id=\"今天的总结\">今天的总结</h2>\n<p>这周学习 Docker、Nginx、Redis 和 MySQL 后，我对项目升级的认识从“增加视频分析功能”，变成了“先建立稳定的任务和数据基础设施”。</p>\n<pre><code class=\"language-text\">Docker：让环境可以重复\nNginx：让访问入口稳定\nRedis：让任务处理异步化\nMySQL：让业务数据持久可靠\n</code></pre>\n<p>它们组合起来，才能支撑视频从上传、处理、生成事件，到保存证据、检索和人工复核的完整流程。下一步最重要的不是立即接入所有模型，而是先把 API、Worker、Redis、MySQL 和文件存储之间的最小闭环跑通。</p>\n<h3 id=\"参考资料\">参考资料</h3>\n<ul>\n<li><a href=\"https://docs.docker.com/manuals/\">Docker Documentation</a></li>\n<li><a href=\"https://nginx.org/en/docs/\">Nginx Documentation</a></li>\n<li><a href=\"https://redis.io/docs/latest/\">Redis Documentation</a></li>\n<li><a href=\"https://dev.mysql.com/doc/refman/8.4/en/\">MySQL 8.4 Reference Manual</a></li>\n</ul>\n",
+    "headings": [
+      {
+        "depth": 3,
+        "slug": "本周总结",
+        "text": "本周总结"
+      },
+      {
+        "depth": 2,
+        "slug": "四项技术在项目中的分工",
+        "text": "四项技术在项目中的分工"
+      },
+      {
+        "depth": 3,
+        "slug": "nginx统一访问入口",
+        "text": "Nginx：统一访问入口"
+      },
+      {
+        "depth": 3,
+        "slug": "mysql保存核心业务数据",
+        "text": "MySQL：保存核心业务数据"
+      },
+      {
+        "depth": 3,
+        "slug": "redis处理异步任务和短期状态",
+        "text": "Redis：处理异步任务和短期状态"
+      },
+      {
+        "depth": 3,
+        "slug": "docker统一多服务环境",
+        "text": "Docker：统一多服务环境"
+      },
+      {
+        "depth": 2,
+        "slug": "四项技术如何串成一条任务链路",
+        "text": "四项技术如何串成一条任务链路"
+      },
+      {
+        "depth": 2,
+        "slug": "升级时需要注意的边界",
+        "text": "升级时需要注意的边界"
+      },
+      {
+        "depth": 2,
+        "slug": "下一步的开发计划",
+        "text": "下一步的开发计划"
+      },
+      {
+        "depth": 3,
+        "slug": "第一阶段工程骨架",
+        "text": "第一阶段：工程骨架"
+      },
+      {
+        "depth": 3,
+        "slug": "第二阶段视频处理链路",
+        "text": "第二阶段：视频处理链路"
+      },
+      {
+        "depth": 3,
+        "slug": "第三阶段规则和证据",
+        "text": "第三阶段：规则和证据"
+      },
+      {
+        "depth": 3,
+        "slug": "第四阶段大模型和检索优化",
+        "text": "第四阶段：大模型和检索优化"
+      },
+      {
+        "depth": 2,
+        "slug": "今天的总结",
+        "text": "今天的总结"
+      },
+      {
+        "depth": 3,
+        "slug": "参考资料",
+        "text": "参考资料"
+      }
+    ]
+  },
+  {
+    "id": "2026-08-21-docker",
+    "title": "8/21 Docker：镜像、容器与多服务编排",
+    "description": "记录 Docker 的镜像与容器、Dockerfile、网络和数据卷，以及 Compose、Swarm 与 Kubernetes 的学习过程",
+    "publishedAt": "2026-08-21",
+    "draft": false,
+    "html": "<h3 id=\"docker镜像容器与多服务编排\">Docker：镜像、容器与多服务编排</h3>\n<h4 id=\"docker-是什么\">Docker 是什么</h4>\n<p>在传统开发过程中，一个项目能否正常运行，除了依赖源代码，还受到操作系统、编程语言版本、第三方库、环境变量和配置文件等因素影响。例如，一个 Go 项目可能要求特定版本的 Go；一个 Node.js 项目可能要求特定版本的 Node.js 和 npm。开发、测试和生产环境配置不一致时，项目就可能出现运行错误。</p>\n<p>Docker 的思路是将应用程序和它依赖的运行环境一起封装起来，形成一个可以重复运行的容器。</p>\n<p>Docker 中有几个核心概念：</p>\n<table>\n<thead>\n<tr>\n<th align=\"left\">概念</th>\n<th align=\"left\">可以怎么理解</th>\n</tr>\n</thead>\n<tbody><tr>\n<td align=\"left\">Image（镜像）</td>\n<td align=\"left\">用于创建容器的只读模板，包含程序运行所需的文件、依赖和配置</td>\n</tr>\n<tr>\n<td align=\"left\">Container（容器）</td>\n<td align=\"left\">镜像运行之后产生的实例，也就是实际启动后的进程</td>\n</tr>\n<tr>\n<td align=\"left\">Dockerfile</td>\n<td align=\"left\">镜像的构建说明文件，描述基础镜像、依赖安装、文件复制和启动命令</td>\n</tr>\n<tr>\n<td align=\"left\">Registry</td>\n<td align=\"left\">保存和分发镜像的仓库，例如 Docker Hub</td>\n</tr>\n</tbody></table>\n<p>它们之间的关系可以概括为：</p>\n<pre><code>Dockerfile ──构建──&gt; Image 镜像 ──运行──&gt; Container 容器\n</code></pre>\n<p>Docker 容器和虚拟机都可以提供隔离的运行环境，但实现方式不同：虚拟机通常需要虚拟出完整硬件环境，并运行一个完整的客户操作系统；容器则主要隔离应用程序和用户空间，共享宿主机操作系统内核，因此启动更快、资源占用更少。容器本质上仍然是宿主机上的一个特殊进程。</p>\n<p>需要注意的是，在 Windows 上使用 Docker Desktop 时，Docker Desktop 通常会通过 WSL2 或轻量级虚拟机运行 Linux 容器。所以虽然操作方式和 Linux 上一致，但底层并不是直接运行在 Windows 内核上。</p>\n<h5 id=\"基本工作流程\">基本工作流程</h5>\n<p>开发者编写 Dockerfile，使用 <code>docker build</code> 构建镜像；镜像可以保存在本地，也可以推送到 Docker Hub 等镜像仓库；其他机器通过 <code>docker pull</code> 下载镜像；最后使用 <code>docker run</code> 根据镜像启动容器：</p>\n<pre><code>编写 Dockerfile\n      ↓\ndocker build 构建镜像\n      ↓\ndocker push 推送镜像\n      ↓\ndocker pull 下载镜像\n      ↓\ndocker run 启动容器\n</code></pre>\n<p>第一次运行 Docker 官方提供的测试镜像时，如果本地没有 <code>hello-world</code> 镜像，Docker 会先从镜像仓库下载镜像，然后根据镜像创建并启动容器。容器运行完成后会输出欢迎信息并自动退出。这个过程说明了 Docker 的基本机制：</p>\n<pre><code>本地没有镜像\n      ↓\n从 Registry 拉取镜像\n      ↓\n根据镜像创建容器\n      ↓\n启动容器并执行默认命令\n      ↓\n程序执行完成，容器退出\n</code></pre>\n<h4 id=\"docker-镜像与镜像管理\">Docker 镜像与镜像管理</h4>\n<p>Docker 容器并不是凭空创建出来的，而是根据某个镜像启动的运行实例。镜像类似程序安装包或模板，容器则是这个模板真正运行起来之后的实例。</p>\n<p>Docker 镜像通常由多层只读文件系统组成，每一层对应镜像构建过程中的一部分内容。分层设计可以复用相同基础层：例如多个应用都基于 <code>ubuntu</code> 或 <code>node</code> 镜像构建时，它们可以共享相同的基础内容，不需要重复保存，从而减少磁盘空间和网络传输开销。</p>\n<p>镜像本身一般不会直接修改；容器运行过程中产生的新文件变化，会写入镜像之上的可写层，默认只属于当前容器。镜像标签如果只写 <code>latest</code>，可能会随着镜像仓库更新而发生变化。为了保证项目环境稳定，通常应该指定明确版本。</p>\n<p><code>docker pull</code> 用于从镜像仓库下载镜像。如果本地没有对应镜像，Docker 会从 Docker Hub 或配置好的私有仓库中获取。下载完成后，可以使用 <code>docker images</code> 查看本地镜像。</p>\n<p>还可以使用 <code>docker image inspect</code> 查看镜像的配置、环境变量、默认启动命令、工作目录、暴露端口、镜像层和架构等信息。在排查容器启动问题时，<code>inspect</code> 是一个非常常用的命令。\n<img src=\"image-3.png\" alt=\"alt text\"></p>\n<h4 id=\"docker-容器与容器生命周期\">Docker 容器与容器生命周期</h4>\n<p>镜像是用于创建容器的只读模板，而容器是镜像启动后的运行实例。一个镜像可以创建多个容器，同一个容器也可以被停止后再次启动。镜像主要负责提供程序和运行环境，容器则负责真正运行程序，因此镜像和容器是模板与实例的关系。\n可以使用下面的命令根据 MySQL 镜像创建并启动一个容器：</p>\n<pre><code class=\"language-bash\">docker run -d --name mysql-demo -p 3306:3306 -e MYSQL_ROOT_PASSWORD=123456 mysql:8.4\n</code></pre>\n<p>这条命令中：</p>\n<ul>\n<li><code>docker run</code>：创建并启动容器；</li>\n<li><code>-d</code>：让容器在后台运行；</li>\n<li><code>--name mysql-demo</code>：为容器指定名称；</li>\n<li><code>-p 3306:3306</code>：将宿主机 <code>3306</code> 端口映射到容器 <code>3306</code> 端口；</li>\n<li><code>-e MYSQL_ROOT_PASSWORD=123456</code>：设置 MySQL 的 root 用户密码；</li>\n<li><code>mysql:8.4</code>：使用 MySQL 8.4 镜像。</li>\n</ul>\n<p>如果本地没有这个镜像，Docker 会先自动下载镜像，再创建容器。此时可以使用本机 MySQL 客户端连接：</p>\n<pre><code class=\"language-bash\">mysql -h 127.0.0.1 -P 3306 -u root -p\n</code></pre>\n<p>接下来可以查看 MySQL 容器日志、停止容器、启动容器：</p>\n<pre><code class=\"language-bash\">docker logs &lt;MySQL容器名称&gt;\ndocker stop &lt;MySQL容器名称&gt;\ndocker start &lt;MySQL容器名称&gt;\n</code></pre>\n<p>此时 <code>docker ps</code> 中看不到该容器，但 <code>docker ps -a</code> 仍然可以看到它，只是状态变成了 <code>Exited</code>。停止容器并不等于删除容器，容器的配置、名称和关联的数据卷仍然保留。</p>\n<p><code>docker pause</code> 会暂停容器中的进程，<code>docker unpause</code> 会恢复容器中的进程。不过 MySQL 是数据库服务，实际使用时不建议随意暂停，因为暂停期间 MySQL 无法正常处理新的连接和请求。删除容器前也需要先停止容器。</p>\n<p>Docker 容器有一个很重要的特点：容器是否持续运行，取决于容器中的主进程是否持续运行。MySQL 容器的主进程就是 MySQL 服务；只要 MySQL 服务正常运行，容器就会保持运行；如果 MySQL 主进程结束，容器也会随之退出。</p>\n<h4 id=\"dockerfile-与镜像构建\">Dockerfile 与镜像构建</h4>\n<p>Dockerfile 是一个普通文本文件，用来描述如何构建 Docker 镜像。它把基础镜像、文件复制、环境配置和初始化操作记录下来，Docker 再根据这些指令生成新的镜像。可以把 Dockerfile 理解为镜像的构建说明书：</p>\n<pre><code>Dockerfile + 相关文件\n          ↓\ndocker build\n          ↓\n生成新的 Docker 镜像\n          ↓\ndocker run\n          ↓\n启动新的 Docker 容器\n</code></pre>\n<p>Dockerfile 中最常见的指令是：</p>\n<table>\n<thead>\n<tr>\n<th align=\"left\">指令</th>\n<th align=\"left\">作用</th>\n</tr>\n</thead>\n<tbody><tr>\n<td align=\"left\"><code>FROM</code></td>\n<td align=\"left\">指定基础镜像</td>\n</tr>\n<tr>\n<td align=\"left\"><code>COPY</code></td>\n<td align=\"left\">将本地文件复制到镜像中</td>\n</tr>\n<tr>\n<td align=\"left\"><code>RUN</code></td>\n<td align=\"left\">在构建镜像时执行命令</td>\n</tr>\n<tr>\n<td align=\"left\"><code>ENV</code></td>\n<td align=\"left\">设置环境变量</td>\n</tr>\n<tr>\n<td align=\"left\"><code>EXPOSE</code></td>\n<td align=\"left\">说明容器需要使用的端口</td>\n</tr>\n<tr>\n<td align=\"left\"><code>VOLUME</code></td>\n<td align=\"left\">声明数据卷</td>\n</tr>\n<tr>\n<td align=\"left\"><code>CMD</code> / <code>ENTRYPOINT</code></td>\n<td align=\"left\">指定容器启动时执行的命令</td>\n</tr>\n<tr>\n<td align=\"left\">虽然已经有现成的 mysql:8.4 镜像，但仍然可以基于它构建一个自定义 MySQL 镜像。例如，在一个单独的文件夹中创建 Dockerfile 文件：</td>\n<td align=\"left\"></td>\n</tr>\n</tbody></table>\n<pre><code class=\"language-dockerfile\">FROM mysql:8.4\n\nCOPY init.sql /docker-entrypoint-initdb.d/01-init.sql\n</code></pre>\n<p>同时在同一个文件夹中创建 init.sql 文件：</p>\n<pre><code class=\"language-sql\">CREATE DATABASE IF NOT EXISTS docker_demo;\n\nUSE docker_demo;\n\nCREATE TABLE IF NOT EXISTS user (\n    id INT PRIMARY KEY AUTO_INCREMENT,\n    name VARCHAR(50) NOT NULL\n);\n\nINSERT INTO user (name) VALUES (&#39;张三&#39;), (&#39;李四&#39;);\n</code></pre>\n<p>这里的 <code>FROM mysql:8.4</code> 表示当前镜像基于官方 MySQL 8.4 镜像构建。<code>COPY init.sql /docker-entrypoint-initdb.d/01-init.sql</code> 表示将本地初始化 SQL 文件复制到 MySQL 容器约定的初始化目录中。</p>\n<p>MySQL 官方镜像在第一次初始化一个全新的数据目录时，会执行 <code>/docker-entrypoint-initdb.d/</code> 目录下的 <code>.sql</code>、<code>.sh</code> 等文件，因此可以通过这种方式自动创建数据库、表和初始化数据。在 Dockerfile 和 init.sql 所在目录中执行：</p>\n<pre><code class=\"language-bash\">docker build -t mysql-demo:1.0 .\n</code></pre>\n<p>其中，<code>docker build</code> 表示构建镜像；<code>-t mysql-demo:1.0</code> 表示给生成镜像命名为 <code>mysql-demo</code>，标签为 <code>1.0</code>；最后的 <code>.</code> 表示使用当前目录作为构建上下文。构建上下文是 Docker 在构建过程中可以访问的文件范围，因此 Dockerfile 和 init.sql 都需要位于当前目录或其子目录中。\n构建完成后，可以查看新生成的镜像。\n<img src=\"image-4.png\" alt=\"alt text\"></p>\n<p>这时候镜像已经构建完成，可以根据它创建一个新的测试容器：</p>\n<pre><code class=\"language-docker\">docker run -d --name mysql-demo-container -p 3307:3306 -e MYSQL_ROOT_PASSWORD=123456 mysql-demo:1.0\n</code></pre>\n<p>如果 MySQL 启动成功，可以进入容器中的 MySQL：</p>\n<pre><code class=\"language-bash\">docker exec -it mysql-demo-container mysql -uroot -p\n</code></pre>\n<p>输入密码后进入 MySQL，查看一下存储的数据：\n<img src=\"image-5.png\" alt=\"alt text\"></p>\n<p>如果能够查询到 张三 和 李四，说明 Dockerfile 中复制的初始化 SQL 已经成功执行。\n需要注意，MySQL 官方镜像中的初始化脚本通常只会在数据目录第一次初始化时执行。如果容器已经使用了旧的数据卷，后续重新启动容器时，/docker-entrypoint-initdb.d/ 中的 SQL 文件一般不会再次执行。因此，如果修改了 init.sql，直接重启已有容器可能看不到新的数据库内容。学习时可以使用一个全新的测试容器和全新的数据卷验证初始化效果，但不要随意删除正在使用的 MySQL 容器或数据卷。\n还需要区分 <code>RUN</code>、<code>CMD</code> 和 <code>ENTRYPOINT</code>：<code>RUN</code> 在构建镜像时执行，例如安装依赖或复制文件；<code>CMD</code> 用于指定容器默认启动命令；<code>ENTRYPOINT</code> 用于指定容器的主要执行程序。</p>\n<p>对于 MySQL 官方镜像，MySQL 的启动脚本和默认启动命令已经在基础镜像中配置好了，所以自定义 Dockerfile 通常只需要通过 <code>COPY</code> 添加初始化文件，不需要重新编写 MySQL 的启动命令。</p>\n<h4 id=\"docker-网络与数据卷\">Docker 网络与数据卷</h4>\n<p>Docker 网络解决的是容器之间如何通信的问题，数据卷解决的是容器删除或重建后数据如何保留的问题。对于 MySQL 这类数据库服务来说，这两个部分都非常重要：应用容器需要通过网络访问 MySQL，MySQL 数据则需要通过数据卷进行持久化保存。</p>\n<h5 id=\"docker-网络\">Docker 网络</h5>\n<p>Docker 安装后会自动创建默认的 bridge 网络。查看当前 Docker 网络：</p>\n<pre><code class=\"language-bash\">docker network ls\n</code></pre>\n<p>其中，<code>bridge</code> 是默认的桥接网络，<code>host</code> 表示使用宿主机网络，<code>none</code> 表示不使用网络。平时使用 <code>docker run</code> 启动容器时，如果没有指定网络，容器会自动连接到默认的 <code>bridge</code> 网络。\n<img src=\"image-6.png\" alt=\"alt text\"></p>\n<p>在实际项目中，通常不建议让所有容器都使用默认的 bridge 网络，而是创建一个自定义网络：</p>\n<pre><code class=\"language-bash\">docker network create app-network\n</code></pre>\n<p>自定义网络的一个重要作用是让同一个网络中的容器可以通过容器名称互相访问。</p>\n<h5 id=\"数据卷\">数据卷</h5>\n<p>容器本身的文件系统属于容器生命周期的一部分。如果直接将数据库文件保存到容器内部，删除容器后数据可能会丢失。数据卷是 Docker 管理的一种持久化存储方式，它独立于容器存在；即使删除容器，数据卷仍然可以保留。因此，MySQL 的数据目录通常需要挂载数据卷。</p>\n<p>创建一个名为 <code>mysql-data</code> 的数据卷：</p>\n<pre><code class=\"language-bash\">docker volume create mysql-data\n</code></pre>\n<p>查看所有数据卷：</p>\n<pre><code class=\"language-bash\">docker volume ls\n</code></pre>\n<p>检查具体数据卷信息：</p>\n<pre><code class=\"language-bash\">docker volume inspect mysql-data\n</code></pre>\n<p>使用数据卷创建一个新的 MySQL 测试容器：</p>\n<pre><code class=\"language-powershell\">docker run -d `\n  --name mysql-volume-test `\n  -p 3307:3306 `\n  -e MYSQL_ROOT_PASSWORD=123456 `\n  --mount type=volume,src=mysql-data,dst=/var/lib/mysql `\n  mysql:8.4\n</code></pre>\n<p>也可以使用更短的 <code>-v</code> 写法：</p>\n<pre><code class=\"language-bash\">docker run -d --name mysql-volume-test -p 3307:3306 -e MYSQL_ROOT_PASSWORD=123456 -v mysql-data:/var/lib/mysql mysql:8.4\n</code></pre>\n<p>这条命令使用 <code>mysql:8.4</code> 镜像，创建并后台启动一个名为 <code>mysql-volume-test</code> 的 MySQL 容器，同时把 MySQL 数据保存到 Docker 数据卷中。然后进入 MySQL 容器创建测试数据。</p>\n<p>进入 MySQL 后执行：</p>\n<pre><code class=\"language-sql\">CREATE DATABASE docker_demo;\n\nUSE docker_demo;\n\nCREATE TABLE user (\n    id INT PRIMARY KEY AUTO_INCREMENT,\n    name VARCHAR(50)\n);\n\nINSERT INTO user (name) VALUES (&#39;张三&#39;);\n\nSELECT * FROM user;\n</code></pre>\n<p>停止并删除测试容器：</p>\n<pre><code class=\"language-bash\">docker stop mysql-volume-test\ndocker rm mysql-volume-test\n</code></pre>\n<p>然后使用同一个数据卷重新创建一个 MySQL 容器，再次进入 MySQL 查询。如果能查到之前插入的“张三”，说明数据已经保存在 <code>mysql-data</code> 数据卷中，而不是保存在原来的容器内部。</p>\n<p>这个过程说明：容器可以被删除和重新创建，但只要数据卷还存在，数据库数据就可以继续使用。</p>\n<h4 id=\"docker-compose\">Docker Compose</h4>\n<p>前面使用 <code>docker run</code> 启动 MySQL 时，需要在命令中手动设置容器名称、端口、环境变量和数据卷。当项目中有多个容器时，如果每个容器都单独执行一长串命令，管理起来会比较麻烦。</p>\n<p>Docker Compose 可以通过一个 <code>compose.yaml</code> 文件统一描述服务、网络、数据卷和环境变量，再使用一条命令创建和启动整套服务。它主要用于管理多容器应用，例如一个项目可能包含后端服务、MySQL 数据库和 Redis 缓存。</p>\n<p>如果使用 <code>docker run</code>，需要分别启动多个容器；使用 Docker Compose 后，可以将这些配置写入同一个 YAML 文件中，再通过 <code>docker compose up</code> 统一启动。</p>\n<p>首先创建一个新的文件夹，例如：</p>\n<pre><code class=\"language-text\">mysql-compose\n├── compose.yaml\n└── init.sql\n</code></pre>\n<p>在 <code>compose.yaml</code> 文件中写入：</p>\n<pre><code class=\"language-yaml\">services:\n  mysql:\n    image: mysql:8.4\n    container_name: compose-mysql\n    environment:\n      MYSQL_ROOT_PASSWORD: 123456\n      MYSQL_DATABASE: docker_demo\n    ports:\n      - &quot;3308:3306&quot;\n    volumes:\n      - mysql-compose-data:/var/lib/mysql\n      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro\n\nvolumes:\n  mysql-compose-data:\n</code></pre>\n<p>这里：</p>\n<ul>\n<li><code>services</code>：应用服务集合；</li>\n<li><code>mysql</code>：服务名称；</li>\n<li><code>image</code>：指定使用 <code>mysql:8.4</code> 镜像；</li>\n<li><code>container_name</code>：指定容器名称；</li>\n<li><code>environment</code>：设置 MySQL 的 root 密码和默认数据库；</li>\n<li><code>ports</code>：将宿主机 <code>3308</code> 端口映射到容器 <code>3306</code> 端口；</li>\n<li><code>volumes</code>：挂载 MySQL 数据卷和初始化 SQL 文件。</li>\n</ul>\n<p>其中，<code>mysql-compose-data:/var/lib/mysql</code> 表示将名为 <code>mysql-compose-data</code> 的 Docker 数据卷挂载到 MySQL 数据目录；<code>./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro</code> 表示将当前目录的 <code>init.sql</code> 文件挂载到初始化目录，最后的 <code>ro</code> 表示只读。</p>\n<p>在 <code>compose.yaml</code> 所在目录打开 PowerShell，然后执行：</p>\n<pre><code class=\"language-bash\">docker compose up -d\n</code></pre>\n<p><code>docker compose up</code> 会根据 <code>compose.yaml</code> 创建需要的网络、数据卷和容器，<code>-d</code> 表示让服务在后台运行。</p>\n<h4 id=\"docker-swarm-与-kubernetes\">Docker Swarm 与 Kubernetes</h4>\n<p>前面学习的 <code>docker run</code>、Dockerfile、数据卷和 Docker Compose，主要用于在一台 Docker 主机上构建和管理容器应用。当应用部署到多台服务器，并且需要自动扩容、故障恢复、负载均衡和滚动更新时，就需要使用容器编排工具。</p>\n<h5 id=\"docker-swarm\">Docker Swarm</h5>\n<p>Docker Swarm 是 Docker Engine 内置的集群管理功能，可以将多台运行 Docker Engine 的机器组成一个集群。Swarm 集群中的节点主要分为 Manager 和 Worker 两种角色：</p>\n<ul>\n<li>Manager：维护集群状态、调度服务和管理节点；</li>\n<li>Worker：主要负责运行 Manager 分配的任务。</li>\n</ul>\n<p>Swarm 中的服务不是单独描述某一个容器，而是描述某个应用服务应该以什么镜像运行、运行几个副本、使用哪些端口和网络等。</p>\n<p>初始化一个单节点 Swarm 集群：</p>\n<pre><code class=\"language-bash\">docker swarm init\n</code></pre>\n<p>执行后，当前机器会成为 Manager 节点。如果要实现真正的高可用和多机部署，则需要多台可以互相通信的 Docker 主机。初始化 Swarm 后，Docker 会输出加入 Worker 节点所需的命令和 Token，其他机器可以使用这个命令加入集群。</p>\n<p>在 Swarm 中，使用 <code>docker service create</code> 创建服务。Swarm Manager 会自动创建新的任务；如果某个节点发生故障，Manager 会根据服务的期望状态重新调度任务。</p>\n<p>需要注意，MySQL 属于有状态服务，而 Swarm 的服务副本通常更适合无状态应用。Web 服务、API 服务和任务处理服务可以比较容易地运行多个副本；但 MySQL 这类数据库涉及数据卷、主从复制、数据一致性和故障恢复，不能简单地把副本数量设为多个就实现高可用。因此，实际项目中通常会单独设计数据库集群，而不是直接对普通 MySQL 容器执行多副本扩展。</p>\n<h5 id=\"kubernetes\">Kubernetes</h5>\n<p>此外，Kubernetes 也是一种容器编排平台，但它的功能范围和生态比 Docker Swarm 更完整。Kubernetes 可以管理容器化应用的部署、扩缩容、服务发现、负载均衡、配置、密钥、存储和故障恢复。</p>\n<p>Kubernetes 通常使用 YAML 文件描述应用的期望状态，再由控制器不断调整实际运行状态。可以先把几个工具的适用范围这样理解：</p>\n<pre><code class=\"language-text\">docker run\n    ↓\n管理单个容器\n\nDocker Compose\n    ↓\n管理单机上的多容器应用\n\nDocker Swarm\n    ↓\n管理多台 Docker 主机上的服务\n\nKubernetes\n    ↓\n管理大规模、复杂的容器化应用集群\n</code></pre>\n<p>Docker Compose 适合本地开发、测试环境和简单部署，例如通过一个 compose.yaml 文件启动后端、MySQL 和 Redis。Docker Swarm 直接集成在 Docker Engine 中，学习成本相对较低，适合 Docker 生态下的基础集群部署。Kubernetes 功能更丰富，适合复杂的生产环境，但学习和运维成本也更高。</p>\n<h3 id=\"参考资料\">参考资料</h3>\n<ul>\n<li><a href=\"https://www.runoob.com/docker/docker-tutorial.html\">Docker 教程（菜鸟教程）</a></li>\n<li><a href=\"https://docs.docker.com/manuals/\">Docker Documentation</a></li>\n<li><a href=\"https://docs.docker.com/get-started/docker-concepts/\">Docker 基础概念</a></li>\n<li><a href=\"https://docs.docker.com/reference/dockerfile/\">Dockerfile reference</a></li>\n<li><a href=\"https://docs.docker.com/compose/\">Docker Compose</a></li>\n<li><a href=\"https://docs.docker.com/engine/storage/volumes/\">Docker Volumes</a></li>\n<li><a href=\"https://docs.docker.com/engine/network/\">Docker Networking overview</a></li>\n<li><a href=\"https://docs.docker.com/engine/swarm/\">Docker Swarm mode</a></li>\n</ul>\n",
+    "headings": [
+      {
+        "depth": 3,
+        "slug": "docker镜像容器与多服务编排",
+        "text": "Docker：镜像、容器与多服务编排"
+      },
+      {
+        "depth": 4,
+        "slug": "docker-是什么",
+        "text": "Docker 是什么"
+      },
+      {
+        "depth": 5,
+        "slug": "基本工作流程",
+        "text": "基本工作流程"
+      },
+      {
+        "depth": 4,
+        "slug": "docker-镜像与镜像管理",
+        "text": "Docker 镜像与镜像管理"
+      },
+      {
+        "depth": 4,
+        "slug": "docker-容器与容器生命周期",
+        "text": "Docker 容器与容器生命周期"
+      },
+      {
+        "depth": 4,
+        "slug": "dockerfile-与镜像构建",
+        "text": "Dockerfile 与镜像构建"
+      },
+      {
+        "depth": 4,
+        "slug": "docker-网络与数据卷",
+        "text": "Docker 网络与数据卷"
+      },
+      {
+        "depth": 5,
+        "slug": "docker-网络",
+        "text": "Docker 网络"
+      },
+      {
+        "depth": 5,
+        "slug": "数据卷",
+        "text": "数据卷"
+      },
+      {
+        "depth": 4,
+        "slug": "docker-compose",
+        "text": "Docker Compose"
+      },
+      {
+        "depth": 4,
+        "slug": "docker-swarm-与-kubernetes",
+        "text": "Docker Swarm 与 Kubernetes"
+      },
+      {
+        "depth": 5,
+        "slug": "docker-swarm",
+        "text": "Docker Swarm"
+      },
+      {
+        "depth": 5,
+        "slug": "kubernetes",
+        "text": "Kubernetes"
+      },
+      {
+        "depth": 3,
+        "slug": "参考资料",
+        "text": "参考资料"
+      }
+    ]
+  },
+  {
+    "id": "2026-08-21-markdown",
+    "title": "8/21 Markdown：基本语法学习笔记",
+    "description": "整理 Markdown 的标题、段落、代码、链接、图片和表格等常用语法",
+    "publishedAt": "2026-08-21",
+    "draft": false,
+    "html": "<h3 id=\"markdown-基本语法学习笔记\">Markdown 基本语法学习笔记</h3>\n<h4 id=\"一markdown-是什么\">一、Markdown 是什么</h4>\n<p>Markdown 是一种轻量级标记语言。它通过少量易读的符号描述文档结构，让纯文本同时具备较好的可读性和排版能力。</p>\n<p>例如，下面这段文字即使不经过渲染，也能看出标题、列表和代码的层次：</p>\n<pre><code class=\"language-markdown\"># 项目说明\n\n这是项目的简介。\n\n## 安装步骤\n\n1. 安装依赖\n2. 修改配置\n3. 启动项目\n</code></pre>\n<p>Markdown 文件通常使用 <code>.md</code> 作为扩展名，可以被转换成 HTML，也可以用于生成 PDF、技术文档、博客文章、README 文件和学习笔记。它的重点不是让作者花大量时间调整字体和间距，而是让作者专注于内容本身。</p>\n<h4>二、标题语法</h4>\n<p>Markdown 使用 <code>#</code> 表示标题，<code>#</code> 的数量决定标题级别，最多可以使用六级标题：</p>\n<pre><code class=\"language-markdown\"># 一级标题\n## 二级标题\n### 三级标题\n#### 四级标题\n##### 五级标题\n###### 六级标题\n</code></pre>\n<p>渲染后，一级标题最大，六级标题最小。通常建议遵循下面的结构：</p>\n<pre><code class=\"language-markdown\"># 文章主题\n\n## 第一部分\n### 第一部分中的小节\n\n## 第二部分\n### 第二部分中的小节\n</code></pre>\n<h5>标题的使用建议</h5>\n<ol>\n<li>一篇文章通常只保留一个一级标题，用来表示文章主题。</li>\n<li>不要为了让文字变大而滥用标题，强调文字应使用粗体。</li>\n<li>不要跳过层级，例如从 <code>##</code> 直接跳到 <code>####</code>。</li>\n<li>标题符号和文字之间最好保留一个空格：<code>## 正确写法</code>。</li>\n<li>标题前后最好留一个空行，能够减少不同编辑器之间的解析差异。</li>\n</ol>\n<p>错误示例：</p>\n<pre><code class=\"language-markdown\">#正确但不推荐\n##错误示例\n</code></pre>\n<p>推荐写法：</p>\n<pre><code class=\"language-markdown\"># 正确写法\n## 推荐写法\n</code></pre>\n<h4>三、段落与换行</h4>\n<p>普通文字直接书写即可。Markdown 通常以空行区分段落：</p>\n<pre><code class=\"language-markdown\">这是第一段。它可以包含多句话，直到遇到空行。\n\n这是第二段。空行会让内容变成新的段落。\n</code></pre>\n<h5>段内换行</h5>\n<p>如果只是想在同一段中换一行，可以在上一行末尾添加两个空格，再按回车：</p>\n<pre><code class=\"language-markdown\">第一行文字。  \n第二行文字。\n</code></pre>\n<p>也可以使用 HTML 的 <code>&lt;br&gt;</code> 标签：</p>\n<pre><code class=\"language-markdown\">第一行文字。&lt;br&gt;\n第二行文字。\n</code></pre>\n<p>不过，不同平台对单个回车的处理方式并不完全一致。为了让文章在博客、GitHub 和其他编辑器中保持稳定，建议使用空行表示新段落，只有确实需要同一段内换行时才使用两个空格或 <code>&lt;br&gt;</code>。</p>\n<h4 id=\"四级标题\">四、强调文字</h4>\n<h5 id=\"五级标题\">斜体</h5>\n<p>使用一对星号或下划线包裹文字：</p>\n<pre><code class=\"language-markdown\">*斜体文字*\n_斜体文字_\n</code></pre>\n<p>效果：<em>斜体文字</em>。</p>\n<p>斜体适合表示补充说明、术语的特别强调或外文词语，但不建议整段使用斜体，否则阅读压力会比较大。</p>\n<h5>粗体</h5>\n<p>使用两对星号或下划线包裹文字：</p>\n<pre><code class=\"language-markdown\">**粗体文字**\n__粗体文字__\n</code></pre>\n<p>效果：<strong>粗体文字</strong>。</p>\n<p>粗体更适合突出结论、关键词和操作步骤。例如：<strong>提交代码前必须先运行测试</strong>。</p>\n<h5>粗斜体</h5>\n<p>同时使用三颗星号：</p>\n<pre><code class=\"language-markdown\">***粗斜体文字***\n</code></pre>\n<p>效果：<em><strong>粗斜体文字</strong></em>。</p>\n<h5>删除线</h5>\n<p>删除线不是最早的基础 Markdown 语法，但很多编辑器都支持使用两个波浪线：</p>\n<pre><code class=\"language-markdown\">~~已经删除的内容~~\n</code></pre>\n<p>效果：<del>已经删除的内容</del>。</p>\n<p>它适合表示修改前的内容、已经废弃的方案或自我纠正，不建议把删除线当作普通强调手段。</p>\n<h4>五、列表语法</h4>\n<h5 id=\"标题的使用建议\">无序列表</h5>\n<p>无序列表可以使用 <code>-</code>、<code>*</code> 或 <code>+</code>：</p>\n<pre><code class=\"language-markdown\">- Redis\n- MySQL\n- Rust\n</code></pre>\n<p>效果：</p>\n<ul>\n<li>Redis</li>\n<li>MySQL</li>\n<li>Rust</li>\n</ul>\n<p>同一组列表最好统一使用同一种符号，不要在同一层级混用 <code>-</code>、<code>*</code> 和 <code>+</code>。</p>\n<h5>有序列表</h5>\n<p>有序列表使用数字加英文句点：</p>\n<pre><code class=\"language-markdown\">1. 安装依赖\n2. 修改配置\n3. 启动服务\n</code></pre>\n<p>效果：</p>\n<ol>\n<li>安装依赖</li>\n<li>修改配置</li>\n<li>启动服务</li>\n</ol>\n<p>有些 Markdown 编辑器会自动修正编号，因此即使全部写成 <code>1.</code>，渲染时也可能显示为连续的数字。不过为了提高源文件的可读性，手动写出正确编号仍然是更好的习惯。</p>\n<h5>嵌套列表</h5>\n<p>在列表项前增加两个或四个空格，可以表示子列表：</p>\n<pre><code class=\"language-markdown\">- 前端\n  - HTML\n  - CSS\n  - JavaScript\n- 后端\n  - Java\n  - Go\n  - Rust\n</code></pre>\n<p>嵌套列表的缩进必须保持一致。如果某一项缩进太少，编辑器可能会把它解析成新的一级列表。</p>\n<h5 id=\"段内换行\">任务列表</h5>\n<p>任务列表常用于记录待办事项，写法是方括号加空格或 <code>x</code>：</p>\n<pre><code class=\"language-markdown\">- [ ] 学习标题和段落语法\n- [x] 整理代码块语法\n- [ ] 完成文章发布\n</code></pre>\n<p>效果：</p>\n<ul>\n<li><input disabled=\"\" type=\"checkbox\"> 学习标题和段落语法</li>\n<li><input checked=\"\" disabled=\"\" type=\"checkbox\"> 整理代码块语法</li>\n<li><input disabled=\"\" type=\"checkbox\"> 完成文章发布</li>\n</ul>\n<p>任务列表属于许多平台支持的扩展语法。如果某个平台没有显示复选框，通常仍会把它当作普通列表展示。</p>\n<h4 id=\"四强调文字\">六、引用块</h4>\n<p>使用 <code>&gt;</code> 表示引用：</p>\n<pre><code class=\"language-markdown\">&gt; Markdown 的重点是表达内容结构，而不是复杂的视觉排版。\n</code></pre>\n<p>效果：</p>\n<blockquote>\n<p>Markdown 的重点是表达内容结构，而不是复杂的视觉排版。</p>\n</blockquote>\n<p>引用块也可以包含多段内容：</p>\n<pre><code class=\"language-markdown\">&gt; 这是引用的第一段。\n&gt;\n&gt; 这是引用的第二段。\n</code></pre>\n<p>通过增加 <code>&gt;</code> 可以实现嵌套引用：</p>\n<pre><code class=\"language-markdown\">&gt; 外层引用\n&gt;&gt; 内层引用\n</code></pre>\n<p>引用适合用于记录资料原文、提示重要信息、补充背景说明或展示命令执行结果。引用内容最好注明来源，不要把整篇外部文章直接复制进来。</p>\n<h4>七、代码语法</h4>\n<h5 id=\"粗体\">行内代码</h5>\n<p>使用一对反引号包裹短代码：</p>\n<pre><code class=\"language-markdown\">使用 `git status` 可以查看当前工作区状态。\n</code></pre>\n<p>效果：使用 <code>git status</code> 可以查看当前工作区状态。</p>\n<p>行内代码适合表示命令、变量名、函数名、文件名、配置项和键盘按键，例如 <code>package.json</code>、<code>npm install</code> 和 <code>PORT</code>。</p>\n<h5 id=\"粗斜体\">多行代码块</h5>\n<p>使用三个反引号包裹多行代码：</p>\n<pre><code class=\"language-markdown\">```\nconst message = &#39;Hello Markdown&#39;;\nconsole.log(message);\n```\n</code></pre>\n<p>代码块的开头可以写语言名称，以便编辑器进行语法高亮：</p>\n<pre><code class=\"language-markdown\">```javascript\nconst message = &#39;Hello Markdown&#39;;\nconsole.log(message);\n```\n</code></pre>\n<p>常见语言标识包括：</p>\n<pre><code class=\"language-text\">javascript、typescript、python、java、go、rust、css、html、json、yaml、bash、sql\n</code></pre>\n<p>展示命令时，可以使用 <code>bash</code>：</p>\n<pre><code class=\"language-bash\">pnpm install\npnpm dev\n</code></pre>\n<p>展示 JSON 时，可以使用 <code>json</code>：</p>\n<pre><code class=\"language-json\">{\n  &quot;name&quot;: &quot;markdown-note&quot;,\n  &quot;version&quot;: &quot;1.0.0&quot;\n}\n</code></pre>\n<p>代码块中的内容会按照原样显示，因此不要在代码块内部额外添加不必要的缩进。代码块前后也建议各留一个空行。</p>\n<h4>八、链接语法</h4>\n<p>标准链接的写法是：</p>\n<pre><code class=\"language-markdown\">[Markdown 基本语法](https://markdown.com.cn/basic-syntax/)\n</code></pre>\n<p>效果：<a href=\"https://markdown.com.cn/basic-syntax/\">Markdown 基本语法</a>。</p>\n<p>链接文字应该尽量说明目标内容，不建议把一长串 URL 直接作为链接文字。比如“查看 Markdown 基本语法”比“点击这里”更容易理解，也更有利于无障碍阅读。</p>\n<h5>给链接增加标题</h5>\n<p>可以在 URL 后面增加可选标题：</p>\n<pre><code class=\"language-markdown\">[Markdown 教程](https://markdown.com.cn/basic-syntax/ &quot;查看基本语法&quot;)\n</code></pre>\n<h5 id=\"无序列表\">自动链接</h5>\n<p>部分 Markdown 编辑器会自动识别完整 URL：</p>\n<pre><code class=\"language-markdown\">https://markdown.com.cn/basic-syntax/\n</code></pre>\n<p>也可以使用尖括号明确表示自动链接：</p>\n<pre><code class=\"language-markdown\">&lt;https://markdown.com.cn/basic-syntax/&gt;\n&lt;example@example.com&gt;\n</code></pre>\n<h4>九、图片语法</h4>\n<p>图片语法和链接非常相似，只是在前面增加一个感叹号：</p>\n<pre><code class=\"language-markdown\">![图片说明](https://example.com/image.png)\n</code></pre>\n<p>其中，方括号里的文字叫作替代文本。当图片无法加载，或读者使用屏幕阅读器时，替代文本可以帮助读者理解图片内容。</p>\n<p>也可以为图片添加标题：</p>\n<pre><code class=\"language-markdown\">![Markdown 标志](https://example.com/markdown.png &quot;Markdown Logo&quot;)\n</code></pre>\n<p>图片路径可以是网络地址，也可以是相对于当前 Markdown 文件的本地路径：</p>\n<pre><code class=\"language-markdown\">![项目目录结构](./images/project-tree.png)\n</code></pre>\n<p>使用本地图片时要注意文件名大小写、相对路径层级和部署后的目录结构。文章在本地能显示，并不代表发布到网站后一定能显示。</p>\n<h4>十、表格语法</h4>\n<p>表格通常用于展示字段、对比结果或配置说明：</p>\n<pre><code class=\"language-markdown\">| 语法 | 作用 |\n| --- | --- |\n| `#` | 创建标题 |\n| `-` | 创建列表 |\n| `&gt;` | 创建引用 |\n</code></pre>\n<p>效果：</p>\n<table>\n<thead>\n<tr>\n<th>语法</th>\n<th>作用</th>\n</tr>\n</thead>\n<tbody><tr>\n<td><code>#</code></td>\n<td>创建标题</td>\n</tr>\n<tr>\n<td><code>-</code></td>\n<td>创建列表</td>\n</tr>\n<tr>\n<td><code>&gt;</code></td>\n<td>创建引用</td>\n</tr>\n</tbody></table>\n<p>通过冒号可以控制对齐方式：</p>\n<pre><code class=\"language-markdown\">| 左对齐 | 居中 | 右对齐 |\n| :--- | :---: | ---: |\n| 内容 | 内容 | 内容 |\n</code></pre>\n<p>表格中的竖线如果属于正文内容，需要使用反斜杠转义：</p>\n<pre><code class=\"language-markdown\">| 命令 | 说明 |\n| --- | --- |\n| `a \\| b` | 使用管道符连接两个值 |\n</code></pre>\n<p>表格适合简短内容。如果单元格里需要放很长的段落、代码块或复杂列表，建议改用多个小节，避免表格在手机上难以阅读。</p>\n<h4>十一、分隔线</h4>\n<p>使用三个或更多的连字符、星号或下划线可以创建分隔线：</p>\n<pre><code class=\"language-markdown\">---\n</code></pre>\n<p>也可以写成：</p>\n<pre><code class=\"language-markdown\">***\n___\n</code></pre>\n<p>分隔线适合区分文章中两个相对独立的部分，例如正文和附录。不要频繁使用分隔线，否则文章会被切割得过于零散。</p>\n<h4 id=\"六引用块\">十二、转义字符</h4>\n<p>Markdown 中有一些特殊字符具有语法含义。如果希望它们按照普通文字显示，可以在前面添加反斜杠：</p>\n<pre><code class=\"language-markdown\">\\*这不是斜体\\*\n\\# 这不是标题\n\\[这不是链接\\]\n</code></pre>\n<p>常见需要转义的字符包括：</p>\n<pre><code class=\"language-text\">\\\\ 反斜杠\n\\` 反引号\n\\* 星号\n\\_ 下划线\n\\{ \\} 花括号\n\\[ \\] 方括号\n\\( \\) 小括号\n\\# 井号\n\\+ 加号\n\\- 连字符\n\\. 句点\n\\! 感叹号\n\\| 管道符\n</code></pre>\n<p>例如，如果想在文章中展示标题写法，而不是让它真的变成标题，可以写成：</p>\n<pre><code class=\"language-markdown\">\\# 这段文字会显示井号\n</code></pre>\n<h4 id=\"七代码语法\">十三、内嵌 HTML</h4>\n<p>Markdown 支持在文档中混合使用部分 HTML：</p>\n<pre><code class=\"language-html\">&lt;br&gt;\n&lt;span&gt;这是一段 HTML 文本。&lt;/span&gt;\n</code></pre>\n<p>也可以使用 HTML 控制图片宽度或增加特定结构，但不同平台对 HTML 的支持不完全一致。因此，日常写作时应优先使用 Markdown 自身的语法，只有在 Markdown 无法满足需求时再使用 HTML。</p>\n<p>需要特别注意的是，某些网站会过滤危险或不安全的 HTML 标签和属性。不要在不清楚平台安全策略的情况下嵌入脚本、事件属性或外部组件。</p>\n<h4>十四、推荐的文章写作流程</h4>\n<p>写一篇 Markdown 文章时，可以按照下面的顺序组织：</p>\n<ol>\n<li>先确定一个清晰的一级标题。</li>\n<li>使用二级标题拆分主要内容。</li>\n<li>每个小节先用普通段落解释概念。</li>\n<li>使用列表整理多个并列要点。</li>\n<li>使用代码块展示可以复制的代码或命令。</li>\n<li>使用引用块突出注意事项或外部资料。</li>\n<li>使用链接补充官方文档和参考资料。</li>\n<li>发布前检查标题层级、空行、代码闭合、图片路径和表格格式。</li>\n</ol>\n<p>不要一开始就纠结字体、颜色和复杂布局。先把内容结构写清楚，再根据发布平台支持的扩展语法进行优化，通常能够获得更稳定的结果。</p>\n<h3>参考资料</h3>\n<p><a href=\"https://markdown.com.cn/basic-syntax/\">Markdown 基本语法</a></p>\n",
+    "headings": [
+      {
+        "depth": 3,
+        "slug": "markdown-基本语法学习笔记",
+        "text": "Markdown 基本语法学习笔记"
+      },
+      {
+        "depth": 4,
+        "slug": "一markdown-是什么",
+        "text": "一、Markdown 是什么"
+      },
+      {
+        "depth": 2,
+        "slug": "安装步骤",
+        "text": "安装步骤"
+      },
+      {
+        "depth": 4,
+        "slug": "二标题语法",
+        "text": "二、标题语法"
+      },
+      {
+        "depth": 2,
+        "slug": "二级标题",
+        "text": "二级标题"
+      },
+      {
+        "depth": 3,
+        "slug": "三级标题",
+        "text": "三级标题"
+      },
+      {
+        "depth": 4,
+        "slug": "四级标题",
+        "text": "四级标题"
+      },
+      {
+        "depth": 5,
+        "slug": "五级标题",
+        "text": "五级标题"
+      },
+      {
+        "depth": 2,
+        "slug": "第一部分",
+        "text": "第一部分"
+      },
+      {
+        "depth": 3,
+        "slug": "第一部分中的小节",
+        "text": "第一部分中的小节"
+      },
+      {
+        "depth": 2,
+        "slug": "第二部分",
+        "text": "第二部分"
+      },
+      {
+        "depth": 3,
+        "slug": "第二部分中的小节",
+        "text": "第二部分中的小节"
+      },
+      {
+        "depth": 5,
+        "slug": "标题的使用建议",
+        "text": "标题的使用建议"
+      },
+      {
+        "depth": 2,
+        "slug": "推荐写法",
+        "text": "推荐写法"
+      },
+      {
+        "depth": 4,
+        "slug": "三段落与换行",
+        "text": "三、段落与换行"
+      },
+      {
+        "depth": 5,
+        "slug": "段内换行",
+        "text": "段内换行"
+      },
+      {
+        "depth": 4,
+        "slug": "四强调文字",
+        "text": "四、强调文字"
+      },
+      {
+        "depth": 5,
+        "slug": "斜体",
+        "text": "斜体"
+      },
+      {
+        "depth": 5,
+        "slug": "粗体",
+        "text": "粗体"
+      },
+      {
+        "depth": 5,
+        "slug": "粗斜体",
+        "text": "粗斜体"
+      },
+      {
+        "depth": 5,
+        "slug": "删除线",
+        "text": "删除线"
+      },
+      {
+        "depth": 4,
+        "slug": "五列表语法",
+        "text": "五、列表语法"
+      },
+      {
+        "depth": 5,
+        "slug": "无序列表",
+        "text": "无序列表"
+      },
+      {
+        "depth": 5,
+        "slug": "有序列表",
+        "text": "有序列表"
+      },
+      {
+        "depth": 5,
+        "slug": "嵌套列表",
+        "text": "嵌套列表"
+      },
+      {
+        "depth": 5,
+        "slug": "任务列表",
+        "text": "任务列表"
+      },
+      {
+        "depth": 4,
+        "slug": "六引用块",
+        "text": "六、引用块"
+      },
+      {
+        "depth": 4,
+        "slug": "七代码语法",
+        "text": "七、代码语法"
+      },
+      {
+        "depth": 5,
+        "slug": "行内代码",
+        "text": "行内代码"
+      },
+      {
+        "depth": 5,
+        "slug": "多行代码块",
+        "text": "多行代码块"
+      },
+      {
+        "depth": 4,
+        "slug": "八链接语法",
+        "text": "八、链接语法"
+      },
+      {
+        "depth": 5,
+        "slug": "给链接增加标题",
+        "text": "给链接增加标题"
+      },
+      {
+        "depth": 5,
+        "slug": "自动链接",
+        "text": "自动链接"
+      },
+      {
+        "depth": 4,
+        "slug": "九图片语法",
+        "text": "九、图片语法"
+      },
+      {
+        "depth": 4,
+        "slug": "十表格语法",
+        "text": "十、表格语法"
+      },
+      {
+        "depth": 4,
+        "slug": "十一分隔线",
+        "text": "十一、分隔线"
+      },
+      {
+        "depth": 4,
+        "slug": "十二转义字符",
+        "text": "十二、转义字符"
+      },
+      {
+        "depth": 4,
+        "slug": "十三内嵌-html",
+        "text": "十三、内嵌 HTML"
+      },
+      {
+        "depth": 4,
+        "slug": "十四推荐的文章写作流程",
+        "text": "十四、推荐的文章写作流程"
+      },
+      {
+        "depth": 3,
+        "slug": "参考资料",
+        "text": "参考资料"
+      }
+    ]
+  },
+  {
     "id": "2026-08-20",
     "title": "8/20 Redis：缓存、数据结构与可靠性",
     "description": "记录 Redis 的缓存机制、基础数据结构、消息与原子操作，以及持久化和缓存问题等学习过程",
     "publishedAt": "2026-08-20",
     "draft": false,
-    "html": "<h3 id=\"redis缓存数据结构与可靠性\">Redis：缓存、数据结构与可靠性</h3>\n<h4 id=\"redis-是什么\">Redis 是什么</h4>\n<p>Redis 是一个开源的、基于内存的键值型数据库，也可以称为内存数据结构服务。\nRedis 中的数据以 Key-Value 的形式保存。\nRedis 不仅支持简单的字符串，还支持多种数据结构：String：字符串，Hash：哈希，适合保存对象，List：列表，适合实现队列，Set：集合，自动去重，Sorted Set：有序集合，适合实现排行榜，Stream：消息流。\nRedis 的数据主要存储在内存中，因此读写速度很快。它经常被用作缓存，减少应用程序对 MySQL 等数据库的访问压力。\nRedis 的典型使用场景，假设维护了一个 商品服务，它背后直连 MySQL 数据库。假设商品服务需要对外提供 每秒 1w 次查询，但背后的 MySQL 却只能提供每秒 5k 次查询，这类大流量查询场景非常常见，这时候加一层Redis就能解决这个问题。\nRedis最主要的能力就是本地缓存，查询内存的速度比查询磁盘要快， MySQL 数据主要存放在磁盘里，如果能将 MySQL 里的数据放内存里，查询完全不走磁盘，那必然能大大提升查询性能。当用户查询商品时，程序可以先查询 Redis：</p>\n<pre><code>用户请求\n   ↓\n查询 Redis\n   ↓\n缓存命中：直接返回\n   ↓\n缓存未命中：查询 MySQL\n   ↓\n将查询结果写入 Redis\n</code></pre>\n<p>除此之外还有登录状态和 Token，用户登录后，可以将 Token 保存到 Redis，并设置过期时间，还有Redis 可以快速实现访问量、点赞数、库存数量等计数功能，使用 List 可以实现简单的任务队列。\nRedis 为什么速度快，主要原因有几点，1. 数据主要保存在内存中，减少磁盘 I/O。Redis 内置了多种高效数据结构。命令执行模型简单，核心命令通常通过事件循环处理。Redis 使用轻量级的通信协议。很多常用操作的时间复杂度较低，例如 GET、SET 通常是 O(1)。 一些常用的命令：</p>\n<table>\n<thead>\n<tr>\n<th align=\"left\">命令</th>\n<th align=\"center\">作用</th>\n</tr>\n</thead>\n<tbody><tr>\n<td align=\"left\"><code>PING</code></td>\n<td align=\"center\">检查 Redis 是否正常连接</td>\n</tr>\n<tr>\n<td align=\"left\"><code>SET</code></td>\n<td align=\"center\">保存字符串数据</td>\n</tr>\n<tr>\n<td align=\"left\"><code>GET</code></td>\n<td align=\"center\">获取字符串数据</td>\n</tr>\n<tr>\n<td align=\"left\"><code>EXISTS</code></td>\n<td align=\"center\">判断 Key 是否存在</td>\n</tr>\n<tr>\n<td align=\"left\"><code>TYPE</code></td>\n<td align=\"center\">查看 Value 的数据类型</td>\n</tr>\n<tr>\n<td align=\"left\"><code>DEL</code></td>\n<td align=\"center\">删除 Key</td>\n</tr>\n</tbody></table>\n<h4 id=\"基础数据stringhash-与缓存使用\">基础数据：String、Hash 与缓存使用</h4>\n<p>Redis 是一个基于内存的键值型数据库，数据通过 Key-Value 的形式保存。Key 用于查找数据，Value 用于保存具体内容。例如 user:1001:name 是 Key，张三 是 Value。Redis 的 Key 通常使用冒号进行命名，例如 user:1001:name、article:1001:views、login:code:13800138000，这样可以体现数据的业务含义，方便后续管理。\nRedis 中最基本的数据类型是 String，可以保存普通文本、数字、Token、验证码和 JSON 字符串等内容。通过 SET 命令可以保存数据，GET 命令可以读取数据：</p>\n<pre><code class=\"language-redis\">SET user:1001:name &quot;张三&quot;\nGET user:1001:name\n</code></pre>\n<p>执行后可以读取到“张三”。如果对同一个 Key 再次执行 SET，新的值会覆盖旧的值：</p>\n<pre><code class=\"language-redis\">SET user:1001:name &quot;李四&quot;\nGET user:1001:name\n```Redis\n最终结果为“李四”。如果需要同时读取多个 Key，可以使用 MGET：\n```redis\nSET user:1001:age 20\nSET user:1001:city &quot;深圳&quot;\nMGET user:1001:name user:1001:age user:1001:city\n```Redis\nMGET 可以一次获取多个 Key，减少客户端与 Redis 之间的网络交互次数。\nRedis 还可以对保存为数字的 String 进行自增操作。例如实现文章阅读量统计：\n```redis\nSET article:1001:views 0\nINCR article:1001:views\nINCRBY article:1001:views 10\nGET article:1001:views\n</code></pre>\n<p>其中 INCR 表示自增 1，INCRBY 表示按照指定数值增加。执行完成后，阅读量会从 0 增加到 11。Redis 的这种计数操作可以应用于文章阅读量、点赞数、接口访问次数等场景。如果 Key 中保存的不是数字，例如保存的是“张三”，则不能使用 INCR 进行增加。\n缓存数据通常不应该永久保存，因此 Redis 支持设置过期时间。例如保存一个 60 秒后失效的验证码：</p>\n<pre><code class=\"language-redis\">SET login:code:13800138000 &quot;9527&quot; EX 60\nTTL login:code:13800138000\n</code></pre>\n<p>EX 60 表示过期时间为 60 秒，TTL 用于查看剩余秒数。如果返回正数，表示 Key 还存在并且还有对应的剩余时间；返回 -1 表示 Key 存在但没有设置过期时间；返回 -2 表示 Key 不存在或已经过期。也可以分两步设置过期时间：</p>\n<pre><code class=\"language-redis\">SET product:1001 &quot;手机&quot;\nEXPIRE product:1001 30\nTTL product:1001\n</code></pre>\n<p>这表示商品缓存保存 30 秒。过期时间结束后，Redis 会自动删除这个 Key。</p>\n<p>String 适合保存一个简单的值，而 Hash 适合保存一个对象的多个字段。使用 Hash 保存用户信息时，可以执行：</p>\n<pre><code class=\"language-redis\">HSET user:1001 name &quot;张三&quot;\nHSET user:1001 age 20\nHSET user:1001 city &quot;北京&quot;\n</code></pre>\n<p>这里的 user:1001 是 Redis 的 Key，name、age 和 city 是 Hash 内部的字段。可以使用 HGET 获取某一个字段，可以使用 HMGET 一次获取多个字段，如果想查看整个 Hash，可以使用 HGETALL。\n需要注意，HGETALL 会返回这个 Hash 中的全部字段。如果一个 Hash 中保存了很多字段，一次性获取全部内容可能会产生较大的网络开销，因此实际开发中应该根据需要使用 HGET 或 HMGET。删除 Hash 中的字段可以使用 HDEL。Hash 也支持对数字字段进行增加。例如统计用户积分：</p>\n<pre><code class=\"language-redis\">HSET user:1001 score 100\nHINCRBY user:1001 score 10\nHGET user:1001 score\n</code></pre>\n<p>HINCRBY 适合用于积分、余额、数量等数字字段的增加。\nString 和 Hash 都可以保存对象，但使用方式不同。使用多个 String 保存用户信息时，需要创建多个 Key时候 Hash一条指令就可以解决：</p>\n<pre><code class=\"language-redis\">HSET user:1001 name &quot;张三&quot; age 20 city &quot;北京&quot;\n</code></pre>\n<p>因此，当一个对象包含多个相关字段时，Hash 通常更直观，也更方便统一管理。不过 Hash 的过期时间是设置在整个 Key 上的，不能直接给某一个普通字段单独设置过期时间。</p>\n<h4 id=\"队列集合与排序\">队列、集合与排序</h4>\n<p>此外Redis 的常用数据结构，主要包括 List、Set、Sorted Set 和 HyperLogLog。List 适合保存有序数据，可以实现队列和栈；Set 适合保存不重复的数据，可以进行交集、并集和差集操作；Sorted Set 在 Set 的基础上增加了分数，可以实现排行榜；HyperLogLog 则适合进行大规模数据的基数统计。\nList 是一种有序且允许重复元素的数据结构，常用于任务队列、消息列表和最近访问记录。使用 RPUSH 可以从右侧添加元素，使用 LPOP 从左侧取出元素：</p>\n<pre><code class=\"language-redis\">DEL task:queue\nRPUSH task:queue &quot;task-1&quot;\nRPUSH task:queue &quot;task-2&quot;\nRPUSH task:queue &quot;task-3&quot;\nLRANGE task:queue 0 -1\nLPOP task:queue\n</code></pre>\n<p>执行 LRANGE task:queue 0 -1 可以查看整个列表，结果为 task-1、task-2、task-3。执行 LPOP 后会取出并删除最左侧的 task-1。使用 RPUSH 添加、LPOP 取出，可以实现先进先出的队列；使用 LPUSH 添加、LPOP 取出，则可以实现后进先出的栈。LLEN 可以查看列表长度，BLPOP 可以在列表为空时等待新任务，适合实现简单的任务消费功能。\nSet 是一种无序且不允许重复元素的数据结构。使用 SADD 添加元素：</p>\n<pre><code class=\"language-redis\">DEL user:1001:tags\nSADD user:1001:tags &quot;redis&quot;\nSADD user:1001:tags &quot;mysql&quot;\nSADD user:1001:tags &quot;redis&quot;\nSMEMBERS user:1001:tags\n</code></pre>\n<p>虽然 redis 被添加了两次，但 Set 中只会保存一份，因为 Set 会自动去重。使用 SCARD 可以查看集合元素数量，使用 SREM 可以删除指定元素。Set 的一个重要特点是支持集合运算。例如有两个用户的兴趣标签：</p>\n<pre><code class=\"language-redis\">SADD user:1001:tags &quot;redis&quot; &quot;mysql&quot; &quot;rust&quot;\nSADD user:1002:tags &quot;redis&quot; &quot;java&quot; &quot;python&quot;\n</code></pre>\n<p>使用 SINTER 查询两个集合的交集，使用 SUNION 查询并集。使用 SDIFF 查询差集。\nSorted Set，也叫 ZSet，是一种有序集合。它和 Set 一样不允许成员重复，但每个成员都会关联一个分数，Redis 会按照分数进行排序。可以使用 ZADD 添加排行榜数据：</p>\n<pre><code class=\"language-redis\">DEL game:ranking\nZADD game:ranking 98 &quot;张三&quot;\nZADD game:ranking 95 &quot;李四&quot;\nZADD game:ranking 100 &quot;王五&quot;\n</code></pre>\n<p>ZREVRANGE 按照分数从高到低返回结果，WITHSCORES 表示同时返回分数。结果类似：</p>\n<pre><code class=\"language-redis\">ZREVRANGE game:ranking 0 -1 WITHSCORES\n王五\n100\n张三\n98\n李四\n95\n</code></pre>\n<p>ZRANGE可以按照从低到高排序，可以使用 ZSCORE 查询某个成员的分数，也可以使用 ZINCRBY 增加成员分数。\nHyperLogLog 是 Redis 提供的一种基数统计结构，主要用于统计大量数据中不同元素的数量。例如统计网站一天的独立访客数量：</p>\n<pre><code class=\"language-redis\">PFADD website:uv &quot;user-1001&quot;\nPFADD website:uv &quot;user-1002&quot;\nPFADD website:uv &quot;user-1001&quot;\nPFCOUNT website:uv\n</code></pre>\n<p>由于 user-1001 被重复添加，PFCOUNT 统计出的独立用户数量是 2，而不是 3。HyperLogLog 不会保存具体的用户列表，只会对不同元素的数量进行估算，因此占用内存很小，适合统计网站 UV、搜索关键词数量和不同设备数量等场景。\nHyperLogLog 的优点是节省内存，缺点是统计结果是估算值，并且不能查看具体有哪些元素。如果业务需要准确保存成员信息，就应该使用 Set；如果只关心不同元素的数量，可以使用 HyperLogLog。\n简单总结一下List 是有序且允许重复的结构，适合队列和栈；Set 是无序且自动去重的结构，适合交集、并集、差集和共同数据计算；Sorted Set 在 Set 的基础上增加了分数，适合排行榜和排序场景；HyperLogLog 适合对大量数据进行低内存的基数统计。</p>\n<h4 id=\"redis-消息与原子操作\">Redis 消息与原子操作</h4>\n<p>接下来继续学习Redis 的消息与原子操作，主要包括发布订阅、Stream、事务、Pipeline 和 Lua 脚本。这些功能主要用于消息传递、任务处理、批量操作以及保证多个命令按照整体逻辑执行。\nRedis 发布订阅功能由发布者、频道和订阅者组成。订阅者先订阅一个频道：</p>\n<pre><code class=\"language-redis\">SUBSCRIBE news\n</code></pre>\n<p>执行后，当前客户端会进入等待消息状态。此时需要打开另一个 PowerShell 窗口，进入 Redis 后执行：</p>\n<pre><code class=\"language-redis\">PUBLISH news &quot;test&quot;\n</code></pre>\n<p>订阅者窗口会收到消息。PUBLISH 的返回值表示当前有多少个订阅者收到了消息。发布订阅适合实现实时通知、聊天室消息、配置更新通知等功能。但是它不会保存历史消息，如果订阅者发布消息时没有在线，就无法收到之前的消息，因此不适合要求消息可靠保存的任务。\nStream 是 Redis 提供的消息流数据结构，适合保存消息并支持后续读取。可以使用 XADD 添加消息：</p>\n<pre><code class=\"language-redis\">XADD order:stream * user_id 1001 amount 2999\nXADD order:stream * user_id 1002 amount 1999\n</code></pre>\n<p>其中 * 表示让 Redis 自动生成消息 ID。查看 Stream 中的消息</p>\n<pre><code class=\"language-redis\">XRANGE order:stream - +\n</code></pre>\n<ul>\n<li>表示从最早的消息开始，+ 表示读取到最后一条消息。Stream 会保存消息内容，因此与发布订阅相比更加可靠，适合订单事件、日志记录和消息队列等场景。Stream 还支持消费者组，可以让多个消费者共同处理消息，适合实际项目中的异步任务处理。\nRedis 事务可以将多个命令放入一个事务中执行。使用 MULTI 开始事务，后续命令会先进入队列，使用 EXEC 后才会真正执行：</li>\n</ul>\n<pre><code class=\"language-redis\">MULTI\nSET account:1001:balance 1000\nINCR account:1001:balance\nGET account:1001:balance\nEXEC\n</code></pre>\n<p>在 MULTI 和 EXEC 之间执行的命令不会立即返回最终结果，而是先返回 QUEUED。执行 EXEC 后，Redis 会按照命令加入的顺序依次执行。使用 DISCARD 可以取消还没有执行的事务，需要注意，Redis 事务不等同于 MySQL 事务。Redis 事务中的命令一旦开始执行，通常不会因为其中一个命令执行失败而自动回滚。因此，使用事务时需要提前保证命令和参数正确。Redis 还支持使用 WATCH 实现乐观锁。例如先监视一个库存 Key：</p>\n<pre><code class=\"language-redis\">WATCH product:1001:stock\nGET product:1001:stock\n</code></pre>\n<p>如果其他客户端在当前事务执行前修改了这个 Key，事务可能执行失败。这样可以避免多个客户端同时修改同一个数据时产生覆盖问题。\nPipeline 的作用是一次向 Redis 发送多个命令，减少客户端和 Redis 之间的网络往返次数。例如程序需要执行很多命令时，可以将命令批量发送，Pipeline 主要解决的是网络效率问题，而不是事务问题。Pipeline 可以减少网络通信次数，但其中的命令不一定具备原子性；如果需要保证多个命令作为一个整体执行，应使用事务或 Lua 脚本。Lua 脚本可以将多个 Redis 命令放在一个脚本中执行，并且脚本执行期间不会被其他 Redis 命令插入。</p>\n<pre><code class=\"language-redis\">SET product:1001:stock 10\nEVAL &quot;local stock = tonumber(redis.call(&#39;GET&#39;, KEYS[1])); if stock and stock &gt; 0 then return redis.call(&#39;DECR&#39;, KEYS[1]); else return -1 end&quot; 1 product:1001:stock\n</code></pre>\n<p>这个脚本脚本表示只有库存大于 0 时才扣减库存，库存大于 0 时执行 DECR，库存不足时返回 -1。\nLua 脚本适合处理判断并修改这类必须连续完成的操作，例如库存扣减、限流、优惠券领取和分布式锁续期。相比先执行 GET 再执行 DECR，Lua 可以避免多个客户端之间的并发问题。</p>\n<h4 id=\"redis-数据可靠性与缓存\">Redis 数据可靠性与缓存</h4>\n<p>Redis 的数据主要保存在内存中，内存读写速度快，但服务重启或服务器故障可能导致数据丢失，因此 Redis 提供了持久化机制，将内存中的数据保存到磁盘中。RDB 是 Redis 默认支持的一种持久化方式，它会在某个时间点生成当前数据集的快照，保存为 RDB 文件。可以手动执行 SAVE 会直接在主进程中生成快照，执行期间可能阻塞其他请求，因此一般不建议在生产环境频繁使用。也可以使用 BGSAVE 会创建后台任务生成 RDB 文件，Redis 主线程可以继续处理客户端请求，更适合实际运行中的服务。RDB 的优点是文件 compact、恢复速度较快，适合备份和快速重启；缺点是它保存的是某个时间点的快照，如果两次快照之间 Redis 发生故障，最近一段时间的数据可能会丢失。因此 RDB 更适合对少量数据丢失可以接受的缓存和备份场景。\nAOF 是另一种持久化方式，它会记录 Redis 执行过的写命令。Redis 重启时，可以重新执行 AOF 文件中的命令来恢复数据。AOF 的特点是数据记录更加及时，通常比 RDB 更能减少数据丢失，但 AOF 文件可能比较大，恢复时也需要重新执行命令。AOF 支持不同的刷盘策略，常见的策略是每秒刷盘一次，在性能和数据安全之间取得平衡。实际使用中，RDB 更适合快照备份，AOF 更适合减少数据丢失，两者可以同时启用。\n除了持久化，Redis 还会通过过期时间管理缓存数据。例如：</p>\n<pre><code class=\"language-redis\">SET product:1001 &quot;A&quot; EX 60\nTTL product:1001\n</code></pre>\n<p>当 TTL 变为 0 后，Key 会被 Redis 删除。Redis 的过期删除并不一定在时间刚到时立即删除，而是结合被动删除和定期检查机制完成。当客户端访问一个已经过期的 Key 时，Redis 会发现它过期并将其删除；同时 Redis 也会定期检查部分设置了过期时间的 Key。\n如果 Redis 内存达到上限，还需要通过淘汰策略删除部分 Key。可以查看当前最大内存和淘汰策略：</p>\n<pre><code class=\"language-redis\">CONFIG GET maxmemory\nCONFIG GET maxmemory-policy\n</code></pre>\n<p>常见淘汰策略包括按照最近最少使用淘汰、按照访问频率淘汰、随机淘汰，以及只淘汰设置了过期时间的 Key。实际项目中，如果 Redis 主要用于缓存，通常会设置最大内存和合理的淘汰策略，避免 Redis 因内存不足无法继续写入。\n缓存穿透是指请求查询一个 Redis 和数据库中都不存在的数据。由于缓存中没有数据，每次请求都会访问数据库，大量无效请求可能造成数据库压力。常见解决办法是缓存空值：</p>\n<pre><code class=\"language-redis\">SET product:1 &quot;__NULL__&quot; EX 60\n</code></pre>\n<p>下次再查询 product:1 时，如果读取到 <strong>NULL</strong>，就可以直接判断数据不存在，而不必再次查询数据库。\n缓存击穿是指某一个访问量很高的热点 Key 在过期的瞬间，大量请求同时发现缓存不存在，然后同时访问数据库。这样会造成数据库瞬时压力。常见解决办法包括使用互斥锁，只允许一个请求查询数据库并重建缓存，其他请求等待；也可以给热点数据设置较长的过期时间，或者使用逻辑过期，让数据在物理上暂时不过期，由程序异步更新。\n缓存雪崩是指大量 Key 在同一时间集中失效，导致大量请求同时访问数据库。比如给大量商品缓存统一设置 300 秒过期时间，可能导致它们在相近时间一起失效。常见解决办法是给过期时间增加随机值。</p>\n<h3 id=\"资料来源\">资料来源</h3>\n<ul>\n<li><a href=\"https://redis.io/docs/latest/commands/redis-8-10-commands/\">Redis Commands（官方文档）</a></li>\n<li><a href=\"https://www.runoob.com/redis/redis-geo.html\">Redis GEO 命令说明</a></li>\n</ul>\n",
+    "html": "<h3 id=\"redis缓存数据结构与可靠性\">Redis：缓存、数据结构与可靠性</h3>\n<h4 id=\"redis-是什么\">Redis 是什么</h4>\n<p>Redis 是一个开源、基于内存的键值型数据库，也可以称为内存数据结构服务。它以 Key-Value 的形式保存数据。</p>\n<p>可以先把它理解成：<strong>用 Key 找 Value 的内存数据库</strong>。因为数据主要放在内存中，读写速度很快，所以经常被用作缓存，减少应用程序对 MySQL 等数据库的访问压力。</p>\n<p>Redis 不只支持简单字符串，还内置了多种数据结构：</p>\n<table>\n<thead>\n<tr>\n<th align=\"left\">数据结构</th>\n<th align=\"left\">特点</th>\n<th align=\"left\">常见场景</th>\n</tr>\n</thead>\n<tbody><tr>\n<td align=\"left\">String</td>\n<td align=\"left\">字符串</td>\n<td align=\"left\">Token、验证码、计数器、JSON</td>\n</tr>\n<tr>\n<td align=\"left\">Hash</td>\n<td align=\"left\">哈希</td>\n<td align=\"left\">保存对象的多个字段</td>\n</tr>\n<tr>\n<td align=\"left\">List</td>\n<td align=\"left\">有序且允许重复</td>\n<td align=\"left\">队列、栈、消息列表</td>\n</tr>\n<tr>\n<td align=\"left\">Set</td>\n<td align=\"left\">自动去重</td>\n<td align=\"left\">标签、交并差集</td>\n</tr>\n<tr>\n<td align=\"left\">Sorted Set</td>\n<td align=\"left\">带分数的有序集合</td>\n<td align=\"left\">排行榜、排序</td>\n</tr>\n<tr>\n<td align=\"left\">Stream</td>\n<td align=\"left\">消息流</td>\n<td align=\"left\">消息队列、事件记录</td>\n</tr>\n</tbody></table>\n<h5 id=\"redis-作为缓存\">Redis 作为缓存</h5>\n<p>假设维护了一个商品服务，它背后直连 MySQL：商品服务每秒需要对外提供 <code>1w</code> 次查询，但 MySQL 只能承受每秒约 <code>5k</code> 次查询。这类大流量查询场景很常见，这时候加一层 Redis 就能分担数据库压力。</p>\n<p>查询内存比查询磁盘快。MySQL 的数据主要在磁盘中，如果将热点数据放进内存，很多查询就不需要再走磁盘。当用户查询商品时，程序可以先查询 Redis：</p>\n<pre><code>用户请求\n   ↓\n查询 Redis\n   ↓\n缓存命中：直接返回\n   ↓\n缓存未命中：查询 MySQL\n   ↓\n将查询结果写入 Redis\n</code></pre>\n<p>除此之外，Redis 还可以保存登录状态和 Token，并设置过期时间；也能快速实现访问量、点赞数、库存数量等计数功能。使用 List 还能实现简单任务队列。</p>\n<h5 id=\"为什么速度快\">为什么速度快</h5>\n<p>主要有几个原因：</p>\n<ol>\n<li>数据主要保存在内存中，减少磁盘 I/O。</li>\n<li>Redis 内置了多种高效数据结构。</li>\n<li>命令执行模型较简单，核心命令通常通过事件循环处理。</li>\n<li>使用轻量级通信协议。</li>\n<li>很多常用操作的时间复杂度较低，例如 <code>GET</code>、<code>SET</code> 通常是 <code>O(1)</code>。</li>\n</ol>\n<p>一些常用命令：</p>\n<table>\n<thead>\n<tr>\n<th align=\"left\">命令</th>\n<th align=\"center\">作用</th>\n</tr>\n</thead>\n<tbody><tr>\n<td align=\"left\"><code>PING</code></td>\n<td align=\"center\">检查 Redis 是否正常连接</td>\n</tr>\n<tr>\n<td align=\"left\"><code>SET</code></td>\n<td align=\"center\">保存字符串数据</td>\n</tr>\n<tr>\n<td align=\"left\"><code>GET</code></td>\n<td align=\"center\">获取字符串数据</td>\n</tr>\n<tr>\n<td align=\"left\"><code>EXISTS</code></td>\n<td align=\"center\">判断 Key 是否存在</td>\n</tr>\n<tr>\n<td align=\"left\"><code>TYPE</code></td>\n<td align=\"center\">查看 Value 的数据类型</td>\n</tr>\n<tr>\n<td align=\"left\"><code>DEL</code></td>\n<td align=\"center\">删除 Key</td>\n</tr>\n</tbody></table>\n<h4 id=\"基础数据stringhash-与缓存使用\">基础数据：String、Hash 与缓存使用</h4>\n<p>Redis 的数据通过 Key-Value 形式保存：Key 用于查找数据，Value 用于保存具体内容。例如 <code>user:1001:name</code> 是 Key，<code>张三</code> 是 Value。</p>\n<p>Key 通常使用冒号命名，例如 <code>user:1001:name</code>、<code>article:1001:views</code>、<code>login:code:13800138000</code>。这样能体现数据的业务含义，也方便后续管理。</p>\n<h5 id=\"string保存简单值与计数\">String：保存简单值与计数</h5>\n<p>String 是最基本的数据类型，可以保存普通文本、数字、Token、验证码和 JSON 字符串等内容。通过 <code>SET</code> 保存数据，<code>GET</code> 读取数据：</p>\n<pre><code class=\"language-redis\">SET user:1001:name &quot;张三&quot;\nGET user:1001:name\n</code></pre>\n<p>执行后可以读取到“张三”。如果对同一个 Key 再次执行 SET，新的值会覆盖旧的值：</p>\n<pre><code class=\"language-redis\">SET user:1001:name &quot;李四&quot;\nGET user:1001:name\n</code></pre>\n<p>最终结果为“李四”。如果需要同时读取多个 Key，可以使用 MGET：</p>\n<pre><code class=\"language-redis\">SET user:1001:age 20\nSET user:1001:city &quot;深圳&quot;\nMGET user:1001:name user:1001:age user:1001:city\n</code></pre>\n<p>MGET 可以一次获取多个 Key，减少客户端与 Redis 之间的网络交互次数。\nRedis 还可以对保存为数字的 String 进行自增操作。例如实现文章阅读量统计：</p>\n<pre><code class=\"language-redis\">SET article:1001:views 0\nINCR article:1001:views\nINCRBY article:1001:views 10\nGET article:1001:views\n</code></pre>\n<p>其中 INCR 表示自增 1，INCRBY 表示按照指定数值增加。执行完成后，阅读量会从 0 增加到 11。Redis 的这种计数操作可以应用于文章阅读量、点赞数、接口访问次数等场景。如果 Key 中保存的不是数字，例如保存的是“张三”，则不能使用 INCR 进行增加。</p>\n<h5 id=\"过期时间\">过期时间</h5>\n<p>缓存数据通常不应该永久保存，因此 Redis 支持设置过期时间。例如保存一个 60 秒后失效的验证码：</p>\n<pre><code class=\"language-redis\">SET login:code:13800138000 &quot;9527&quot; EX 60\nTTL login:code:13800138000\n</code></pre>\n<p><code>EX 60</code> 表示过期时间为 60 秒，<code>TTL</code> 用于查看剩余秒数：</p>\n<ul>\n<li>正数：Key 还存在，并且有对应的剩余时间；</li>\n<li><code>-1</code>：Key 存在，但没有设置过期时间；</li>\n<li><code>-2</code>：Key 不存在或已经过期。</li>\n</ul>\n<p>也可以分两步设置过期时间：</p>\n<pre><code class=\"language-redis\">SET product:1001 &quot;手机&quot;\nEXPIRE product:1001 30\nTTL product:1001\n</code></pre>\n<p>这表示商品缓存保存 30 秒。过期时间结束后，Redis 会自动删除这个 Key。</p>\n<h5 id=\"hash保存对象字段\">Hash：保存对象字段</h5>\n<p>String 适合保存一个简单值，而 Hash 适合保存一个对象的多个字段。使用 Hash 保存用户信息时，可以执行：</p>\n<pre><code class=\"language-redis\">HSET user:1001 name &quot;张三&quot;\nHSET user:1001 age 20\nHSET user:1001 city &quot;北京&quot;\n</code></pre>\n<p>这里的 user:1001 是 Redis 的 Key，name、age 和 city 是 Hash 内部的字段。可以使用 HGET 获取某一个字段，可以使用 HMGET 一次获取多个字段，如果想查看整个 Hash，可以使用 HGETALL。\n需要注意，HGETALL 会返回这个 Hash 中的全部字段。如果一个 Hash 中保存了很多字段，一次性获取全部内容可能会产生较大的网络开销，因此实际开发中应该根据需要使用 HGET 或 HMGET。删除 Hash 中的字段可以使用 HDEL。Hash 也支持对数字字段进行增加。例如统计用户积分：</p>\n<pre><code class=\"language-redis\">HSET user:1001 score 100\nHINCRBY user:1001 score 10\nHGET user:1001 score\n</code></pre>\n<p>HINCRBY 适合用于积分、余额、数量等数字字段的增加。\nString 和 Hash 都可以保存对象，但使用方式不同。使用多个 String 保存用户信息时，需要创建多个 Key；而 Hash 一条指令就可以解决：</p>\n<pre><code class=\"language-redis\">HSET user:1001 name &quot;张三&quot; age 20 city &quot;北京&quot;\n</code></pre>\n<p>因此，当一个对象包含多个相关字段时，Hash 通常更直观，也更方便统一管理。不过 Hash 的过期时间是设置在整个 Key 上的，不能直接给某一个普通字段单独设置过期时间。</p>\n<h4 id=\"队列集合与排序\">队列、集合与排序</h4>\n<p>这一部分主要包括 List、Set、Sorted Set 和 HyperLogLog：</p>\n<table>\n<thead>\n<tr>\n<th align=\"left\">类型</th>\n<th align=\"left\">特点</th>\n<th align=\"left\">适合场景</th>\n</tr>\n</thead>\n<tbody><tr>\n<td align=\"left\">List</td>\n<td align=\"left\">有序、允许重复</td>\n<td align=\"left\">队列、栈、消息列表、最近访问记录</td>\n</tr>\n<tr>\n<td align=\"left\">Set</td>\n<td align=\"left\">无序、自动去重</td>\n<td align=\"left\">标签、交集、并集、差集</td>\n</tr>\n<tr>\n<td align=\"left\">Sorted Set</td>\n<td align=\"left\">成员不重复，并按分数排序</td>\n<td align=\"left\">排行榜、排序场景</td>\n</tr>\n<tr>\n<td align=\"left\">HyperLogLog</td>\n<td align=\"left\">低内存的基数估算</td>\n<td align=\"left\">UV、关键词数、设备数</td>\n</tr>\n</tbody></table>\n<h5 id=\"list队列与栈\">List：队列与栈</h5>\n<p>List 是一种有序且允许重复元素的数据结构。使用 <code>RPUSH</code> 从右侧添加元素，使用 <code>LPOP</code> 从左侧取出元素：</p>\n<pre><code class=\"language-redis\">DEL task:queue\nRPUSH task:queue &quot;task-1&quot;\nRPUSH task:queue &quot;task-2&quot;\nRPUSH task:queue &quot;task-3&quot;\nLRANGE task:queue 0 -1\nLPOP task:queue\n</code></pre>\n<p>执行 LRANGE task:queue 0 -1 可以查看整个列表，结果为 task-1、task-2、task-3。执行 LPOP 后会取出并删除最左侧的 task-1。使用 RPUSH 添加、LPOP 取出，可以实现先进先出的队列；使用 LPUSH 添加、LPOP 取出，则可以实现后进先出的栈。LLEN 可以查看列表长度，BLPOP 可以在列表为空时等待新任务，适合实现简单的任务消费功能。</p>\n<h5 id=\"set自动去重与集合运算\">Set：自动去重与集合运算</h5>\n<p>Set 是一种无序且不允许重复元素的数据结构。使用 <code>SADD</code> 添加元素：</p>\n<pre><code class=\"language-redis\">DEL user:1001:tags\nSADD user:1001:tags &quot;redis&quot;\nSADD user:1001:tags &quot;mysql&quot;\nSADD user:1001:tags &quot;redis&quot;\nSMEMBERS user:1001:tags\n</code></pre>\n<p>虽然 redis 被添加了两次，但 Set 中只会保存一份，因为 Set 会自动去重。使用 SCARD 可以查看集合元素数量，使用 SREM 可以删除指定元素。Set 的一个重要特点是支持集合运算。例如有两个用户的兴趣标签：</p>\n<pre><code class=\"language-redis\">SADD user:1001:tags &quot;redis&quot; &quot;mysql&quot; &quot;rust&quot;\nSADD user:1002:tags &quot;redis&quot; &quot;java&quot; &quot;python&quot;\n</code></pre>\n<p>使用 SINTER 查询两个集合的交集，使用 SUNION 查询并集。使用 SDIFF 查询差集。</p>\n<h5 id=\"sorted-set带分数的排序集合\">Sorted Set：带分数的排序集合</h5>\n<p>Sorted Set，也叫 ZSet，是一种有序集合。它和 Set 一样不允许成员重复，但每个成员都会关联一个分数，Redis 会按照分数进行排序。可以使用 <code>ZADD</code> 添加排行榜数据：</p>\n<pre><code class=\"language-redis\">DEL game:ranking\nZADD game:ranking 98 &quot;张三&quot;\nZADD game:ranking 95 &quot;李四&quot;\nZADD game:ranking 100 &quot;王五&quot;\n</code></pre>\n<p>ZREVRANGE 按照分数从高到低返回结果，WITHSCORES 表示同时返回分数。结果类似：</p>\n<pre><code class=\"language-redis\">ZREVRANGE game:ranking 0 -1 WITHSCORES\n王五\n100\n张三\n98\n李四\n95\n</code></pre>\n<p><code>ZRANGE</code> 可以按照从低到高排序，可以使用 <code>ZSCORE</code> 查询某个成员的分数，也可以使用 <code>ZINCRBY</code> 增加成员分数。</p>\n<h5 id=\"hyperloglog只关心数量时\">HyperLogLog：只关心数量时</h5>\n<p>HyperLogLog 是 Redis 提供的一种基数统计结构，主要用于统计大量数据中不同元素的数量。例如统计网站一天的独立访客数量：</p>\n<pre><code class=\"language-redis\">PFADD website:uv &quot;user-1001&quot;\nPFADD website:uv &quot;user-1002&quot;\nPFADD website:uv &quot;user-1001&quot;\nPFCOUNT website:uv\n</code></pre>\n<p>由于 user-1001 被重复添加，PFCOUNT 统计出的独立用户数量是 2，而不是 3。HyperLogLog 不会保存具体的用户列表，只会对不同元素的数量进行估算，因此占用内存很小，适合统计网站 UV、搜索关键词数量和不同设备数量等场景。\nHyperLogLog 的优点是节省内存，缺点是统计结果是估算值，并且不能查看具体有哪些元素。如果业务需要准确保存成员信息，就应该使用 Set；如果只关心不同元素的数量，可以使用 HyperLogLog。\n简单总结一下：List 适合队列和栈；Set 适合交集、并集、差集和共同数据计算；Sorted Set 适合排行榜和排序场景；HyperLogLog 适合对大量数据进行低内存的基数统计。</p>\n<h4 id=\"redis-消息与原子操作\">Redis 消息与原子操作</h4>\n<p>这一部分主要包括发布订阅、Stream、事务、Pipeline 和 Lua 脚本，分别用于消息传递、任务处理、批量操作，以及保证多个命令按照整体逻辑执行。</p>\n<h5 id=\"发布订阅与-stream\">发布订阅与 Stream</h5>\n<p>Redis 发布订阅功能由发布者、频道和订阅者组成。订阅者先订阅一个频道：</p>\n<pre><code class=\"language-redis\">SUBSCRIBE news\n</code></pre>\n<p>执行后，当前客户端会进入等待消息状态。此时需要打开另一个 PowerShell 窗口，进入 Redis 后执行：</p>\n<pre><code class=\"language-redis\">PUBLISH news &quot;test&quot;\n</code></pre>\n<p>订阅者窗口会收到消息。PUBLISH 的返回值表示当前有多少个订阅者收到了消息。发布订阅适合实现实时通知、聊天室消息、配置更新通知等功能。但是它不会保存历史消息，如果订阅者发布消息时没有在线，就无法收到之前的消息，因此不适合要求消息可靠保存的任务。\nStream 是 Redis 提供的消息流数据结构，适合保存消息并支持后续读取。可以使用 XADD 添加消息：</p>\n<pre><code class=\"language-redis\">XADD order:stream * user_id 1001 amount 2999\nXADD order:stream * user_id 1002 amount 1999\n</code></pre>\n<p>其中 <code>*</code> 表示让 Redis 自动生成消息 ID。查看 Stream 中的消息：</p>\n<pre><code class=\"language-redis\">XRANGE order:stream - +\n</code></pre>\n<p><code>-</code> 表示从最早的消息开始，<code>+</code> 表示读取到最后一条消息。Stream 会保存消息内容，因此与发布订阅相比更加可靠，适合订单事件、日志记录和消息队列等场景。Stream 还支持消费者组，可以让多个消费者共同处理消息，适合实际项目中的异步任务处理。</p>\n<h5 id=\"事务pipeline-与-lua\">事务、Pipeline 与 Lua</h5>\n<p>Redis 事务可以将多个命令放入一个事务中执行。使用 <code>MULTI</code> 开始事务，后续命令会先进入队列，使用 <code>EXEC</code> 后才会真正执行：</p>\n<pre><code class=\"language-redis\">MULTI\nSET account:1001:balance 1000\nINCR account:1001:balance\nGET account:1001:balance\nEXEC\n</code></pre>\n<p>在 <code>MULTI</code> 和 <code>EXEC</code> 之间执行的命令不会立即返回最终结果，而是先返回 <code>QUEUED</code>。执行 <code>EXEC</code> 后，Redis 会按照命令加入的顺序依次执行；使用 <code>DISCARD</code> 可以取消还没有执行的事务。</p>\n<p>需要注意，Redis 事务不等同于 MySQL 事务：命令一旦开始执行，通常不会因为其中一个命令失败而自动回滚。因此，使用事务时需要提前保证命令和参数正确。</p>\n<p>Redis 还支持使用 <code>WATCH</code> 实现乐观锁。例如先监视一个库存 Key：</p>\n<pre><code class=\"language-redis\">WATCH product:1001:stock\nGET product:1001:stock\n</code></pre>\n<p>如果其他客户端在当前事务执行前修改了这个 Key，事务可能执行失败。这样可以避免多个客户端同时修改同一个数据时产生覆盖问题。\nPipeline 的作用是一次向 Redis 发送多个命令，减少客户端和 Redis 之间的网络往返次数。它主要解决网络效率问题，而不是事务问题。</p>\n<p>Pipeline 可以减少网络通信次数，但其中的命令不一定具备原子性；如果需要保证多个命令作为一个整体执行，应使用事务或 Lua 脚本。Lua 脚本可以将多个 Redis 命令放在一个脚本中执行，并且脚本执行期间不会被其他 Redis 命令插入。</p>\n<pre><code class=\"language-redis\">SET product:1001:stock 10\nEVAL &quot;local stock = tonumber(redis.call(&#39;GET&#39;, KEYS[1])); if stock and stock &gt; 0 then return redis.call(&#39;DECR&#39;, KEYS[1]); else return -1 end&quot; 1 product:1001:stock\n</code></pre>\n<p>这个脚本表示：只有库存大于 0 时才扣减库存；库存不足时返回 <code>-1</code>。\nLua 脚本适合处理判断并修改这类必须连续完成的操作，例如库存扣减、限流、优惠券领取和分布式锁续期。相比先执行 GET 再执行 DECR，Lua 可以避免多个客户端之间的并发问题。</p>\n<h4 id=\"redis-数据可靠性与缓存\">Redis 数据可靠性与缓存</h4>\n<p>Redis 的数据主要保存在内存中，读写速度快；但服务重启或服务器故障可能导致数据丢失。因此 Redis 提供了持久化机制，将内存中的数据保存到磁盘。</p>\n<h5 id=\"rdb-与-aof\">RDB 与 AOF</h5>\n<p><strong>RDB</strong> 是 Redis 默认支持的一种持久化方式：在某个时间点生成当前数据集的快照，保存为 RDB 文件。</p>\n<ul>\n<li><code>SAVE</code>：直接在主进程中生成快照，执行期间可能阻塞其他请求，因此一般不建议在生产环境频繁使用。</li>\n<li><code>BGSAVE</code>：创建后台任务生成 RDB 文件，Redis 主线程仍可继续处理客户端请求，更适合实际运行中的服务。</li>\n</ul>\n<p>RDB 文件较紧凑、恢复速度较快，适合备份和快速重启；但它保存的是某个时间点的快照。如果两次快照之间 Redis 发生故障，最近一段时间的数据可能丢失。</p>\n<p><strong>AOF</strong> 则会记录 Redis 执行过的写命令。Redis 重启时，可以重新执行 AOF 文件中的命令来恢复数据。它通常比 RDB 更能减少数据丢失，但文件可能更大，恢复时也需要重新执行命令。</p>\n<p>AOF 支持不同的刷盘策略，常见策略是每秒刷盘一次，在性能和数据安全之间取得平衡。实际使用中，RDB 更适合快照备份，AOF 更适合减少数据丢失，两者可以同时启用。</p>\n<h5 id=\"过期淘汰与缓存穿透\">过期、淘汰与缓存穿透</h5>\n<p>除了持久化，Redis 还会通过过期时间管理缓存数据。例如：</p>\n<pre><code class=\"language-redis\">SET product:1001 &quot;A&quot; EX 60\nTTL product:1001\n</code></pre>\n<p>当 TTL 变为 0 后，Key 会被 Redis 删除。Redis 的过期删除并不一定在时间刚到时立即删除，而是结合被动删除和定期检查机制完成。当客户端访问一个已经过期的 Key 时，Redis 会发现它过期并将其删除；同时 Redis 也会定期检查部分设置了过期时间的 Key。\n如果 Redis 内存达到上限，还需要通过淘汰策略删除部分 Key。可以查看当前最大内存和淘汰策略：</p>\n<pre><code class=\"language-redis\">CONFIG GET maxmemory\nCONFIG GET maxmemory-policy\n</code></pre>\n<p>常见淘汰策略包括按照最近最少使用淘汰、按照访问频率淘汰、随机淘汰，以及只淘汰设置了过期时间的 Key。实际项目中，如果 Redis 主要用于缓存，通常会设置最大内存和合理的淘汰策略，避免 Redis 因内存不足无法继续写入。\n缓存穿透是指请求查询一个 Redis 和数据库中都不存在的数据。由于缓存中没有数据，每次请求都会访问数据库，大量无效请求可能造成数据库压力。常见解决办法是缓存空值：</p>\n<pre><code class=\"language-redis\">SET product:1 &quot;__NULL__&quot; EX 60\n</code></pre>\n<p>下次再查询 product:1 时，如果读取到 <strong>NULL</strong>，就可以直接判断数据不存在，而不必再次查询数据库。</p>\n<h4 id=\"缓存击穿缓存雪崩主从复制与哨兵模式\">缓存击穿、缓存雪崩、主从复制与哨兵模式</h4>\n<p>缓存击穿和缓存雪崩，都是缓存失效后大量请求直接访问数据库、从而造成压力的问题。</p>\n<h5 id=\"缓存击穿一个热点-key-同时失效\">缓存击穿：一个热点 Key 同时失效</h5>\n<p>缓存击穿是指某一个访问量非常高的热点 Key 在过期瞬间，大量请求同时发现缓存不存在，然后同时查询数据库并重新写入缓存。例如某个热门商品的缓存即将过期，很多用户同时访问这个商品，所有请求都会执行以下流程：</p>\n<pre><code>查询 Redis，发现缓存不存在\n        ↓\n大量请求同时查询 MySQL\n        ↓\n大量请求同时重新写入 Redis\n</code></pre>\n<p>这种问题的特点是只有一个或少数几个热点 Key 失效，但访问量非常大。解决缓存击穿的常见方式是使用互斥锁，只允许一个请求负责查询数据库和重建缓存，其他请求等待或暂时返回。可以使用 Redis 的 SET NX EX 实现简单的互斥锁。\n除了互斥锁，还可以使用逻辑过期解决缓存击穿。逻辑过期是指缓存数据本身不立即删除，而是在数据中保存一个过期时间。请求发现数据逻辑上已经过期后，可以先返回旧数据，再由后台线程异步更新缓存，这样可以减少用户请求等待数据库的时间。</p>\n<h5 id=\"缓存雪崩大量-key-集中失效\">缓存雪崩：大量 Key 集中失效</h5>\n<p>缓存雪崩是指大量缓存 Key 在同一时间集中失效，导致大量请求同时访问数据库。例如系统在同一时间缓存了大量商品，并且都设置了 300 秒过期：</p>\n<pre><code class=\"language-redis\">SET product:1001 &quot;data-1&quot; EX 300\nSET product:1002 &quot;data-2&quot; EX 300\nSET product:1003 &quot;data-3&quot; EX 300\n</code></pre>\n<p>如果这些 Key 的创建时间接近，那么它们也可能在接近的时间一起失效，造成数据库瞬间出现大量请求。缓存雪崩通常比缓存击穿影响范围更大，因为它可能涉及大量 Key。解决缓存雪崩的常见方式是给过期时间增加随机值，例如基础过期时间为 300 秒，再随机增加 0 到 60 秒。</p>\n<h5 id=\"主从复制与-sentinel\">主从复制与 Sentinel</h5>\n<p>Redis 主从复制是指将一个 Redis 实例配置为主节点，将其他 Redis 实例配置为副本节点。主节点负责处理写请求，副本节点从主节点同步数据，也可以承担部分读请求。</p>\n<p>副本节点可以通过 <code>REPLICAOF</code> 连接到主节点。主从复制能提供数据副本、分担读取压力，并在主节点故障时为故障转移提供候选节点。</p>\n<p>需要注意，Redis 主从复制默认是异步复制：主节点成功执行写入后，副本节点可能还没有完全同步，因此主节点故障时仍可能丢失少量数据。主从复制本身不会自动选举新的主节点，也不会自动修改客户端连接地址；高可用和自动故障转移需要额外使用 Sentinel（哨兵）。</p>\n<p>哨兵模式，也就是 Redis Sentinel，是建立在主从复制之上的高可用方案，主要负责监控、通知、自动故障转移和服务发现。一个典型的哨兵架构如下：</p>\n<pre><code>        Sentinel 1\n       /          \\\nSentinel 2      Sentinel 3\n       \\          /\n        Redis 主节点\n        /        \\\n   副本节点1   副本节点2\n</code></pre>\n<p>哨兵会持续检查主节点和副本节点是否正常。如果主节点发生故障，多个哨兵会共同判断主节点是否真的不可用，然后选出一个副本节点提升为新的主节点，并让其他副本节点重新复制新的主节点。应用程序通过哨兵查询当前主节点地址，而不是把主节点地址永久写死。</p>\n<h3 id=\"资料来源\">资料来源</h3>\n<ul>\n<li><a href=\"https://redis.io/docs/latest/commands/redis-8-10-commands/\">Redis Commands（官方文档）</a></li>\n<li><a href=\"https://www.runoob.com/redis/redis-geo.html\">Redis GEO 命令说明</a></li>\n</ul>\n",
     "headings": [
       {
         "depth": 3,
@@ -21,9 +396,34 @@ export const diaryArticles: DiaryArticle[] = [
         "text": "Redis 是什么"
       },
       {
+        "depth": 5,
+        "slug": "redis-作为缓存",
+        "text": "Redis 作为缓存"
+      },
+      {
+        "depth": 5,
+        "slug": "为什么速度快",
+        "text": "为什么速度快"
+      },
+      {
         "depth": 4,
         "slug": "基础数据stringhash-与缓存使用",
         "text": "基础数据：String、Hash 与缓存使用"
+      },
+      {
+        "depth": 5,
+        "slug": "string保存简单值与计数",
+        "text": "String：保存简单值与计数"
+      },
+      {
+        "depth": 5,
+        "slug": "过期时间",
+        "text": "过期时间"
+      },
+      {
+        "depth": 5,
+        "slug": "hash保存对象字段",
+        "text": "Hash：保存对象字段"
       },
       {
         "depth": 4,
@@ -31,14 +431,74 @@ export const diaryArticles: DiaryArticle[] = [
         "text": "队列、集合与排序"
       },
       {
+        "depth": 5,
+        "slug": "list队列与栈",
+        "text": "List：队列与栈"
+      },
+      {
+        "depth": 5,
+        "slug": "set自动去重与集合运算",
+        "text": "Set：自动去重与集合运算"
+      },
+      {
+        "depth": 5,
+        "slug": "sorted-set带分数的排序集合",
+        "text": "Sorted Set：带分数的排序集合"
+      },
+      {
+        "depth": 5,
+        "slug": "hyperloglog只关心数量时",
+        "text": "HyperLogLog：只关心数量时"
+      },
+      {
         "depth": 4,
         "slug": "redis-消息与原子操作",
         "text": "Redis 消息与原子操作"
       },
       {
+        "depth": 5,
+        "slug": "发布订阅与-stream",
+        "text": "发布订阅与 Stream"
+      },
+      {
+        "depth": 5,
+        "slug": "事务pipeline-与-lua",
+        "text": "事务、Pipeline 与 Lua"
+      },
+      {
         "depth": 4,
         "slug": "redis-数据可靠性与缓存",
         "text": "Redis 数据可靠性与缓存"
+      },
+      {
+        "depth": 5,
+        "slug": "rdb-与-aof",
+        "text": "RDB 与 AOF"
+      },
+      {
+        "depth": 5,
+        "slug": "过期淘汰与缓存穿透",
+        "text": "过期、淘汰与缓存穿透"
+      },
+      {
+        "depth": 4,
+        "slug": "缓存击穿缓存雪崩主从复制与哨兵模式",
+        "text": "缓存击穿、缓存雪崩、主从复制与哨兵模式"
+      },
+      {
+        "depth": 5,
+        "slug": "缓存击穿一个热点-key-同时失效",
+        "text": "缓存击穿：一个热点 Key 同时失效"
+      },
+      {
+        "depth": 5,
+        "slug": "缓存雪崩大量-key-集中失效",
+        "text": "缓存雪崩：大量 Key 集中失效"
+      },
+      {
+        "depth": 5,
+        "slug": "主从复制与-sentinel",
+        "text": "主从复制与 Sentinel"
       },
       {
         "depth": 3,
