@@ -23,7 +23,7 @@
   --space-16: 4rem;
   --space-24: 6rem;
   --gutter: clamp(1.25rem, 4vw, 4.5rem);
-  --max-width: 80rem;
+  --max-width: 88rem;
   --radius-card: 1rem;
   --radius-control: .75rem;
   --shadow-card: 0 1rem 2.75rem rgb(44 56 84 / 7%);
